@@ -1,5 +1,11 @@
 module GenRFS
 
-greet() = print("Hello World!")
+using Gen
+using Combinatorics
+
+abstract type RFSParams end
+
+include("utils.jl")
+include("rfs/rfs.jl")
 
 end # module
