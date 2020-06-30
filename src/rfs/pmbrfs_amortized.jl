@@ -8,10 +8,16 @@ export pmbrfs,
 struct PMBRFS <: Gen.Distribution{Vector} end
 
 struct PMBRFSStats
+    # partitions
     partitions::Vector
+    ll_partitions::Vector
+    
+    # assignments
     assignments::Vector
-    ll::Vector
+    ll_assignments::Vector
 end
+
+PMBRFSStats() = PMBRFSStats([],[],[],[])
 
 mutable struct PMBRFSParams <: RFSParams
     ppp_params::PPPParams
@@ -69,7 +75,10 @@ function Gen.logpdf(::PMBRFS,
     end
 
     lpdfs_partitions = fill(0.0, length(partitions))
-    As = []
+    
+    # keeping track of partitions, assignments and their scores
+    partitions_dict = Dict()
+    assignments_dict = Dict()
 
     for (i, partition) in enumerate(partitions)
         p_part = setdiff(1:length(xs), partition)
@@ -80,20 +89,20 @@ function Gen.logpdf(::PMBRFS,
         for index in p_part
             ppp_lpdf += ppp_masks_lpdfs[index]
         end
+
         lpdfs_partitions[i] += ppp_lpdf
 
 
         # MBRFS part
-        # number of components choose number of elements in the sample
+        # choose which MBRFS components will be explaining the observation
         mbrfs_partitions = combinations(1:length(mbrfs_params.rs), length(partition))
-        # TODO turn everything into assignments (according to Mario's proposal)
-        # assignments = permutations(1:length(mbrfs_params.rs))
 
         # ldpfs for each tracker existence combination
         mbrfs_lpdfs_partitions = fill(-Inf, length(mbrfs_partitions))
-        
-        max_As_mbrfs = []
     
+        # collecting the best assignment for each mbrfs_partition
+        mbrfs_assignments = Vector{Vector{Int}}(undef, length(mbrfs_partitions))
+        
         # goes through which components explain the data
         for (j, mbrfs_partition) in enumerate(mbrfs_partitions)
 
@@ -117,31 +126,35 @@ function Gen.logpdf(::PMBRFS,
                     lpdfs_assignments[k] += log(1.0 - mbrfs_params.rs[comp])
                 end
                 
-                mbrfs_lpdfs_partitions[j] = logsumexp(lpdfs_assignments)
-                #println("$k $assignment $(lpdfs_assignments[k])")
+                # recording assignment and its score (we still need to know the partition)
+                assignments_dict[[partition, assignment]] = ppp_lpdf + lpdfs_assignments[k]
             end
+
+            mbrfs_lpdfs_partitions[j] = logsumexp(lpdfs_assignments)
             
-            # getting the best assignment for this mbrfs component explanation
-            push!(max_As_mbrfs, collect(assignments)[argmax(lpdfs_assignments)])
+            # getting the best assignment for this mbrfs partition explanation
+            mbrfs_assignments[j] = collect(assignments)[argmax(lpdfs_assignments)]
         end
+
         lpdfs_partitions[i] += logsumexp(mbrfs_lpdfs_partitions)
-    
-        # getting the best assignment from all mbrfs
-        push!(As, max_As_mbrfs[argmax(mbrfs_lpdfs_partitions)])
+        
+        # recording partition and its score (best assignment included)
+        best_assignment = mbrfs_assignments[argmax(mbrfs_lpdfs_partitions)]
+        partitions_dict[[partition, best_assignment]] = lpdfs_partitions[i]
     end
     
-    # saving highest partitions, corresponding assignments
-    # and corresponding normalized log likelihoods
-    sorted_order = sortperm(lpdfs_partitions, rev=true)
-    max_partitions = collect(partitions)[sorted_order][1:3]
-    max_assignments = As[sorted_order][1:3]
-    _, ll = normalize_weights(lpdfs_partitions[sorted_order][1:3])
-
-    pmbrfs_params.pmbrfs_stats = PMBRFSStats(max_partitions, max_assignments, ll)
+    # sorting partitions and assignments according to their scores
+    partitions_pairs = sort(collect(partitions_dict), by=x->x[2], rev=true)
+    assignments_pairs = sort(collect(assignments_dict), by=x->x[2], rev=true)
+    
+    range = 1:3
+    pmbrfs_params.pmbrfs_stats = PMBRFSStats([partitions_pairs[i].first for i=range],
+                                             normalize_weights([partitions_pairs[i].second for i=range])[2],
+                                             [assignments_pairs[i].first for i=range],
+                                             normalize_weights([assignments_pairs[i].second for i=range])[2])
 
     lpdf = logsumexp(lpdfs_partitions)
     
-    #println("pmbrfs lpdf: $lpdf")
     return lpdf
 end
 
