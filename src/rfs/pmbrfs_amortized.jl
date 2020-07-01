@@ -149,7 +149,6 @@ function Gen.logpdf(::PMBRFS,
     
     range = 1:3
     pmbrfs_params.pmbrfs_stats = PMBRFSStats([partitions_pairs[i].first for i=range],
-                                             # normalize_weights([partitions_pairs[i].second for i=range])[2],
                                              [partitions_pairs[i].second for i=range],
                                              [assignments_pairs[i].first for i=range],
                                              [assignments_pairs[i].second for i=range])
