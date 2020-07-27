@@ -2,39 +2,42 @@
 
 export brfs
 
-struct BRFS <: Gen.Distribution{Vector} end
+struct BRFS{T} <: RFS{T} end
 
-const brfs = BRFS()
-
-function Gen.random(::BRFS, r::Float64, rv::Gen.Distribution,
-					rv_args::Tuple)
-    sample = Gen.bernoulli(r) ? [random(rv, rv_args...)] : []
-	return sample
+struct BRFSParams <: RFSParams
+    r::Float64,
+    rv::Gen.Distribution
+    args::Tuple
 end
 
-function Gen.logpdf(::BRFS, x::Vector, r::Float64, rv::Gen.Distribution,
-					rv_args::Tuple)
 
+function partitions(r::BRFS, p::BRFSParams)
+
+end
+
+const brfs = BRFS{Any}()
+
+function Gen.random(::BRFS{T}, params::BRFSParams) where {T}
+    r, rv, args = @extract params
+    Gen.bernoulli(r) ? [random(rv, args...)] : []
+end
+
+function Gen.logpdf(::BRFS{T}, x::Vector{T}, params::BRFSParams)
+
+    r, rv, args = @extract params
+    n = length(x)
     lpdf = 0.0
-    if length(x) == 0
-		lpdf = log(1-r)
-	elseif length(x) == 1
-		lpdf = log(r) + Gen.logpdf(rv, first(x), rv_args...)
-	else
-		lpdf = log(0)
-	end
-    
-    #println("brfs lpdf: $lpdf")
-    #if isinf(lpdf)
-    #    println(x)
-    #    println(r)
-    #    println(rv)
-    #    println(rv_args)
-    #end
+    if n == 0
+        lpdf = log(1-r)
+    elseif n == 1
+        lpdf = log(r) + Gen.logpdf(rv, first(x), args...)
+    else
+        lpdf = log(0)
+    end
     return lpdf
 end
 
-(::BRFS)(r, rv, rv_args) = Gen.random(BRFS(), r, rv, rv_args)
+(::BRFS)(p::BRFSParams) = Gen.random(BRFS(), p)
 
 Gen.has_output_grad(::BRFS) = false
 Gen.logpdf_grad(::BRFS, value::Vector, args...) = (nothing,)
