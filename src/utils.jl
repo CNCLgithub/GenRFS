@@ -1,8 +1,9 @@
 export normalize_weights, partition_press
 
+import Base.map # not really sure why we crash without this import
 using Base:tail
 using Base.Iterators:product, flatten, rest
-using Memoization
+using Memoize
 
 function normalize_weights(log_weights::Vector{Float64})
     log_total_weight = logsumexp(log_weights)
@@ -10,16 +11,28 @@ function normalize_weights(log_weights::Vector{Float64})
     return (log_total_weight, log_normalized_weights)
 end
 
-@memoize function partition_table(m::Vector{Int}, k::Int)
-    m = sort(m, rev = true)
-    pressed = partition_press(m, k)
+function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
+    @assert issorted(upper, rev = true)
+    pressed = partition_press(upper, lower, k)
     rng = collect(1:k)
     vcat(map(x -> partition_push(x, rng), pressed)...)
 end
 
-function partition_press(m::Vector{Int}, k::Int)
-    m = sort(m, rev = true)
-    nx = length(m)
+using Cassette: Cassette, @context, overdub, recurse
+
+@context MemoizeCtx
+
+function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
+    result = get(ctx.metadata, x => y => z, 0)
+    if result === 0
+        result = recurse(ctx, partition_table, x, y, z)
+        ctx.metadata[x => y => z] = result
+    end
+    return result
+end
+
+function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
+    nx = length(upper)
     a = filter(x -> length(x) <= nx,
                integer_partitions(k))
     table = convert.(Int64, zeros(length(a), nx))
@@ -27,10 +40,10 @@ function partition_press(m::Vector{Int}, k::Int)
         v = a[i]
         table[i, 1:length(v)] = v
     end
-    combs = vcat(filter(r -> all((m .- r) .>= 0.),
+    combs = vcat(filter(r -> all(((upper .- r) .>= 0.) .& ((r .- lower) .>= 0.)),
                            collect(eachrow(table)))'...)
-    levels = unique(m)
-    level_idxs = indexin(levels, m)[2:end]
+    levels = unique(upper)
+    level_idxs = indexin(levels, upper)[2:end]
     push!(level_idxs, nx + 1)
     level_perms = []
     beg = 1

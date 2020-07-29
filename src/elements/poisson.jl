@@ -1,4 +1,4 @@
-struct PoissonElement{T} <: SurjectiveRFE{T}
+struct PoissonElement{T} <: EpimorphicRFE{T}
     λ::Float64
     d::Gen.Distribution{T}
     args::Tuple

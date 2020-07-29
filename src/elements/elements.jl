@@ -56,3 +56,6 @@ function map(::IsomorphicRFE, n::Int, k::Int)
     @assert k == 1
     collect(1:n)
 end
+
+include("bernoulli.jl")
+include("poisson.jl")

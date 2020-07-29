@@ -4,7 +4,8 @@ authors = ["belledon <mbelledonne@gmail.com>"]
 version = "0.1.0"
 
 [deps]
+Cassette = "7057c7e9-c182-5462-911a-8362d720325c"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 Gen = "ea4f424c-a589-11e8-07c0-fd5c91b9da4a"
-Memoization = "6fafb56a-5788-4b4e-91ca-c0cea6611c73"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+StatProfilerHTML = "a8a75453-ed82-57c9-9e16-4cd1196ecbf5"
