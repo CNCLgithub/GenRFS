@@ -3,7 +3,7 @@ export normalize_weights, partition_press
 import Base.map # not really sure why we crash without this import
 using Base:tail
 using Base.Iterators:product, flatten, rest
-using Memoize
+using Cassette: Cassette, @context, overdub, recurse
 
 function normalize_weights(log_weights::Vector{Float64})
     log_total_weight = logsumexp(log_weights)
@@ -11,17 +11,25 @@ function normalize_weights(log_weights::Vector{Float64})
     return (log_total_weight, log_normalized_weights)
 end
 
+"""Returns the partition table given the morphological bounds of RFEs
+
+Each top level entry is a possible partition. Within each partions,
+each entry describes the associations of observation elements to a given element.
+
+The elements are ordered by upper morphological bound in descending order.
+
+> NOTE: `Isomorphic elements are not currently supported`
+"""
 function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     @assert issorted(upper, rev = true)
+    @assert sum(lower) == 0
     pressed = partition_press(upper, lower, k)
     rng = collect(1:k)
     vcat(map(x -> partition_push(x, rng), pressed)...)
 end
 
-using Cassette: Cassette, @context, overdub, recurse
-
+# Memoizing the partition table for great fun
 @context MemoizeCtx
-
 function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
     result = get(ctx.metadata, x => y => z, 0)
     if result === 0
@@ -31,6 +39,23 @@ function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
     return result
 end
 
+"""
+Returns the combination table for correspondence cardinality.
+
+For an ordered set of morphological bounds, returns a table
+where each row describes a different combination of cardinalities of assignments.
+
+ie
+
+```
+julia> GenRFS.partition_press([4,1,1],[0,0,0], 4)
+4-element Array{Array{Int64,1},1}:
+ [2, 1, 1]
+ [3, 1, 0]
+ [3, 0, 1]
+ [4, 0, 0]
+```
+"""
 function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     nx = length(upper)
     a = filter(x -> length(x) <= nx,
@@ -58,6 +83,30 @@ function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     collect(map(x -> vcat(x...), pressed))
 end
 
+"""
+Returns a table of all associations for a given cardinality combination.
+
+Rows are the complete disjoint partitioning of the elements in `xs` onto
+elements described in `cs`
+
+eg.
+```
+julia> GenRFS.partition_push([2,1,1], [1,2,3,4])
+12-element Array{Array{Array{Int64,1},1},1}:
+ [[1, 2], [3], [4]]
+ [[1, 2], [4], [3]]
+ [[1, 3], [2], [4]]
+ [[1, 3], [4], [2]]
+ [[1, 4], [2], [3]]
+ [[1, 4], [3], [2]]
+ [[2, 3], [1], [4]]
+ [[2, 3], [4], [1]]
+ [[2, 4], [1], [3]]
+ [[2, 4], [3], [1]]
+ [[3, 4], [1], [2]]
+ [[3, 4], [2], [1]]
+```
+"""
 function partition_push(cs::Vector{Int}, xs::Vector{Int})
     @assert !isempty(cs)
     c = first(cs)
