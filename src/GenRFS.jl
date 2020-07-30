@@ -53,7 +53,7 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
             lpdfs_part += cardinality(es[j], length(assoc))
             isinf(lpdfs_part) && return [-Inf] # no need to continue if impossible
             isempty(assoc) && continue # support no valid if empty
-            lpfds_part += logsumexp(lls[j, assoc])
+            lpfds_part += sum(s_table[j, assoc])
         end
         lpdfs[i] = lpdfs_part
     end
