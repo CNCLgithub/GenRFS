@@ -7,10 +7,10 @@ end
 distribution(rfe::BernoulliElement) = rfe.d
 args(rfe::BernoulliElement) = rfe.args
 
-function cardinality(b::BernoulliElement, k::Int)
-    k > 1 ? -Inf : (k == 1 ? log(r) : log(1.0 - r))
+function cardinality(rfe::BernoulliElement, n::Int)
+    n > 1 ? -Inf : (n == 1 ? log(r) : log(1.0 - r))
 end
 
-function sample(rfe::BernoulliElement)
-    rand() > rfe.r ? Gen.random(rfe.d, rfe.args...) : []
+function sample_cardinality(rfe::BernoulliElement)
+    Int64(rand() > rfe.r)
 end

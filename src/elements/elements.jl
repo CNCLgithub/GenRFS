@@ -9,10 +9,23 @@ function args(::RandomFiniteElement)::Tuple
     error("not implemented")
 end
 
+function sample_cardinality(::RandomFiniteElement)::Int
+    error("not implemented")
+end
+
+function sample(rfe::RandomFiniteElement{T})::Vector{T} where {T}
+    n = sample_cardinality(rfe)
+    sample = Vector{T}(undef, n)
+    for i=1:num
+        sample[i] = distribution(rfe)(args(rfe)...)
+    end
+    sample
+end
+
 """ The log probability P(|{x}| | rfe)
 The log probability of the cardinality of an observation for an RFE.
 """
-function cardinality(rfe::RandomFiniteElement{T}, x::Vector{T}) where {T}
+function cardinality(rfe::RandomFiniteElement, n::Int)
     error("not implemented")
 end
 
@@ -30,32 +43,12 @@ abstract type IsomorphicRFE{T} <: RandomFiniteElement{T} end
 # abstract type IsomorphicRFE{T} <: Interesct{MonomorphicRFE{T}, EpimorphicRFE{T}} end
 
 
+"""The lower and upper bounds of map cardinality"""
 bounds(::RandomFiniteElement) = (0, Inf)
 bounds(::EpimorphicRFE) = (0, Inf)
 bounds(::MonomorphicRFE) = (0, 1)
 bounds(::IsomorphicRFE) = (1,)
 
-
-map(::RandomFiniteElement, k::Int) = error("not implemented")
-
-function map(::MonomorphicRFE, n::Int, d::Int)
-    @assert d >=0 && d <= 1
-    d == 0 && return repeat([], n)
-    collect(0:n)
-end
-"""Epimorphic elements have domains from degree [0, 1]"""
-function map(::EpimorphicRFE, n::Int)
-    [[],collect(1:n)]
-end
-
-""" The map over an isomorphic RFE.
-
-The cardinality, `k == 1`.
-"""
-function map(::IsomorphicRFE, n::Int, k::Int)
-    @assert k == 1
-    collect(1:n)
-end
 
 include("bernoulli.jl")
 include("poisson.jl")

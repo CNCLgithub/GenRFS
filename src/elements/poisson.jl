@@ -7,9 +7,10 @@ end
 distribution(rfe::PoissonElement) = rfe.d
 args(rfe::PoissonElement) = rfe.args
 
-function image(rfe::PoissonElement, k::Int)
+function cardinality(rfe::PoissonElement, n::Int)
+    Gen.logpdf(poisson, rfe.λ, n)
 end
 
-function outer_logpdf(rfe::PoissonElement{T}, x::Vector{T}) where {T}
-    Distributions.logpdf(Poisson(rfe.λ), length(x))
+function sample_cardinality(rfe::PoissonElement)
+    Gen.poisson(rfe.λ)
 end

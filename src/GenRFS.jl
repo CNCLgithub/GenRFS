@@ -34,31 +34,39 @@ function partition(es::RFSElements, n::Int)
     (idxs, partition_table(upper[idxs], lower[idxs], n))
 end
 
-# function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
-#     nx = length(xs)
-#     images = image.(es)
-#     lls = support.(es, extended_xs)
-#     partitions = partition(images)
-#     lpdfs = Vector{Float64}(undef, length(parts))
-#     for (i, part) in enumerate(partitions)
-#         lpdf_part = 0
-#         for (j, assoc) in enumerate(part)
-#             # the last row represent assoc -> []
-#             lpdfs_part += cardinality(es[j], assoc)
-#             isinf(lpdfs_part) && break
-#             lpfds_part += logsumexp(lls[j, assoc])
-#         end
-#         lpdfs[i] = lpdfs_part
-#     end
-#     lpdfs
-# end
+function support_table(es::RFSElements{T}, xs::Vector{T}) where {T}
+    idx_t = collect(product(es, xs))
+    table = Matrix{Float64}(undef, size(idx_t)...)
+    for i in eachindex(idx_t)
+        table[i] = support(idx_t[i]...)
+    end
+    table
+end
 
-# function Gen.logpdf(rfs::RFS{T}, xs::Vector{T}, elements::RFSElements{T})
-#     contains(elements, length(xs)) ? logsumexp(associations(elements, xs)) : -Inf
-# end
+function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
+    s_table = support_table(es, xs)
+    p_table = partition(es, length(xs))
+    lpdfs = Vector{Float64}(undef, size(p_table, 1))
+    for (i, part) in enumerate(partitions)
+        lpdf_part = 0
+        for (j, assoc) in enumerate(part)
+            lpdfs_part += cardinality(es[j], length(assoc))
+            isinf(lpdfs_part) && break # no need to continue if impossible
+            isempty(assoc) && continue # support no valid if empty
+            lpfds_part += logsumexp(lls[j, assoc])
+        end
+        lpdfs[i] = lpdfs_part
+    end
+    lpdfs
+end
 
-# function Gen.random(rfs::RFS{T}, elements::Vector{RFE{T}})
-#     flatten(sample.(elements))::Vector{T}
-# end
+function Gen.logpdf(rfs::RFS{T}, xs::Vector{T}, elements::RFSElements{T})
+    !contains(elements, length(xs)) && return -Inf
+    logsumexp(associations(elements, xs))
+end
+
+function Gen.random(rfs::RFS{T}, elements::Vector{RFE{T}})
+    collect(T, flatten(sample.(elements)))
+end
 
 end # module
