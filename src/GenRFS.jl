@@ -51,7 +51,7 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
         lpdf_part = 0
         for (j, assoc) in enumerate(part)
             lpdfs_part += cardinality(es[j], length(assoc))
-            isinf(lpdfs_part) && break # no need to continue if impossible
+            isinf(lpdfs_part) && return [-Inf] # no need to continue if impossible
             isempty(assoc) && continue # support no valid if empty
             lpfds_part += logsumexp(lls[j, assoc])
         end
