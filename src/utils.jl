@@ -1,7 +1,9 @@
-export normalize_weights, partition_press
+export normalize_weights, partition_table
 
 import Base.map # not really sure why we crash without this import
 using Base:tail
+using LRUCache
+using Combinatorics
 using Base.Iterators:product, flatten, rest
 using Cassette: Cassette, @context, overdub, recurse
 
@@ -22,7 +24,7 @@ The elements are ordered by upper morphological bound in descending order.
 """
 function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     @assert issorted(upper, rev = true)
-    @assert sum(lower) == 0
+    @assert sum(lower) == 0 # no isomorphic elements
     pressed = partition_press(upper, lower, k)
     rng = collect(1:k)
     vcat(map(x -> partition_push(x, rng), pressed)...)
@@ -30,6 +32,10 @@ end
 
 # Memoizing the partition table for great fun
 @context MemoizeCtx
+
+# TODO: add type sig to LRU
+partition_ctx = MemoizeCtx(metadata = LRU(maxsize = 10))
+
 function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
     result = get(ctx.metadata, x => y => z, 0)
     if result === 0
@@ -37,6 +43,10 @@ function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
         ctx.metadata[x => y => z] = result
     end
     return result
+end
+
+function mem_parititon_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
+    Cassette.overdub(parition_ctx, partition_table, upper, lower, k)
 end
 
 """
@@ -58,6 +68,7 @@ julia> GenRFS.partition_press([4,1,1],[0,0,0], 4)
 """
 function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     nx = length(upper)
+    # remove paritions that require too many elements
     a = filter(x -> length(x) <= nx,
                integer_partitions(k))
     table = convert.(Int64, zeros(length(a), nx))
@@ -65,6 +76,7 @@ function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
         v = a[i]
         table[i, 1:length(v)] = v
     end
+    # remove partitions that have too many assignments for any element
     combs = vcat(filter(r -> all(((upper .- r) .>= 0.) .& ((r .- lower) .>= 0.)),
                            collect(eachrow(table)))'...)
     levels = unique(upper)
@@ -72,6 +84,7 @@ function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     push!(level_idxs, nx + 1)
     level_perms = []
     beg = 1
+    # for each assignment mapping, construct all permutations
     for l = 1:length(levels)
         stp = level_idxs[l] - 1
         lvl_perm = map(unique ∘ permutations,
@@ -79,6 +92,7 @@ function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
         push!(level_perms, lvl_perm)
         beg = stp + 1
     end
+    # create the full cardinality table across the levels
     pressed = flatten(product.(level_perms...))
     collect(map(x -> vcat(x...), pressed))
 end

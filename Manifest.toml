@@ -168,6 +168,11 @@ git-tree-sha1 = "79e4496b79e8af45198f8c291f26d4514d6b06d6"
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
 version = "0.7.24"
 
+[[LRUCache]]
+git-tree-sha1 = "788ab2f8a434a63f065ad962368a8cd0f8660a21"
+uuid = "8ac3fa9e-de4c-5943-b1dc-09c6b5f20637"
+version = "1.1.0"
+
 [[LeftChildRightSiblingTrees]]
 deps = ["AbstractTrees"]
 git-tree-sha1 = "71be1eb5ad19cb4f61fa8c73395c0338fd092ae0"
