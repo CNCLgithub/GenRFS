@@ -1,6 +1,6 @@
 
 # construction
-r1 = 0.3
+r1 = 0.5
 r2 = 0.7
 be1 = BernoulliElement{Float64}(r1, normal, (0., 1.0))
 be2 = BernoulliElement{Float64}(r2, uniform, (-1, 1.0))

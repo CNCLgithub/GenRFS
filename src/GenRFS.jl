@@ -55,8 +55,8 @@ function partition(es::RFSElements, n::Int)
     upper = collect(Int64, clamp.(map(last, bs), 0, n))
     lower = collect(Int64, clamp.(map(first, bs), 0, n))
     idxs = sortperm(upper, rev = true)
-    (idxs, partition_table(upper[idxs], lower[idxs], n))
-    # (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
+    # (idxs, partition_table(upper[idxs], lower[idxs], n))
+    (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
 end
 
 function support_table(es::RFSElements{T}, xs::Vector{T}) where {T}
@@ -74,9 +74,9 @@ Returns a vector where each element is indexed in the partition table.
 """
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     s_table = support_table(es, xs)
-    display(s_table)
+    # display(s_table)
     p_table = last(partition(es, length(xs)))
-    display(p_table)
+    # display(p_table)
     ls = Vector{Float64}(undef, length(p_table))
     for (i, part) in enumerate(p_table)
         part_ls = 0
