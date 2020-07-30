@@ -4,31 +4,39 @@ using Gen
 
 include("utils.jl")
 
+export AbstractRFS,
+    rfs,
+    RFSElements
+
 """Random Finite Set"""
-abstract type RFS{T} <: Gen.Distribution{Vector{T}} end
+abstract type AbstractRFS{T} <: Gen.Distribution{Vector{T}} end
+
+struct RFS{T} <: AbstractRFS{T} end
 
 const rfs = RFS{Any}()
 
-
-"""Collection of RFEs"""
 include("elements/elements.jl")
-
 const RFSElements{T} = Vector{RandomFiniteElement{T}}
 
-(::RFS{T})(es::RFSElements{T}) = Gen.random(RFS{T}(), es)
+(r::RFS)(es::RFSElements) = Gen.random(r, es)
 
-
-function Gen.logpdf(::RFS{T}, xs::Vector{T}, elements::RFSElements{T})
+function Gen.logpdf(::RFS, xs, elements::RFSElements{T}) where {T}
+    xs = collect(T, xs)
     !contains(elements, length(xs)) && return -Inf
     logsumexp(associations(elements, xs))
 end
 
-function Gen.random(::RFS{T}, elements::RFSElements{T})
+# function Gen.logpdf(::RFS{T}, xs::Vector{T}, elements::RFSElements{T}) where {T}
+#     !contains(elements, length(xs)) && return -Inf
+#     logsumexp(associations(elements, xs))
+# end
+
+function Gen.random(::RFS, elements::RFSElements{T}) where {T}
     collect(T, flatten(sample.(elements)))
 end
 
 Gen.has_output_grad(::RFS) = false
-Gen.logpdf_grad(::RFS{T}, value::Vector{T}, args...) = (nothing,)
+Gen.logpdf_grad(::RFS, value::Vector, args...) = (nothing,)
 
 """ Whether the given RFS can support the cardinality of the observation"""
 function contains(r::RFSElements, n::Int)
@@ -47,7 +55,8 @@ function partition(es::RFSElements, n::Int)
     upper = collect(Int64, clamp.(map(last, bs), 0, n))
     lower = collect(Int64, clamp.(map(first, bs), 0, n))
     idxs = sortperm(upper, rev = true)
-    (idxs, mem_parititon_table(upper[idxs], lower[idxs], n))
+    (idxs, partition_table(upper[idxs], lower[idxs], n))
+    # (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
 end
 
 function support_table(es::RFSElements{T}, xs::Vector{T}) where {T}
@@ -65,19 +74,21 @@ Returns a vector where each element is indexed in the partition table.
 """
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     s_table = support_table(es, xs)
-    p_table = last(partition(es, length(xs))
-    lpdfs = Vector{Float64}(undef, size(p_table, 1))
+    display(s_table)
+    p_table = last(partition(es, length(xs)))
+    display(p_table)
+    ls = Vector{Float64}(undef, length(p_table))
     for (i, part) in enumerate(p_table)
-        lpdf_part = 0
+        part_ls = 0
         for (j, assoc) in enumerate(part)
-            lpdfs_part += cardinality(es[j], length(assoc))
-            isinf(lpdfs_part) && return [-Inf] # no need to continue if impossible
+            part_ls += cardinality(es[j], length(assoc))
+            isinf(part_ls) && return [-Inf] # no need to continue if impossible
             isempty(assoc) && continue # support no valid if empty
-            lpfds_part += sum(s_table[j, assoc])
+            part_ls += sum(s_table[j, assoc])
         end
-        lpdfs[i] = lpdfs_part
+        ls[i] = part_ls
     end
-    lpdfs
+    ls
 end
 
 

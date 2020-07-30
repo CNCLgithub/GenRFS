@@ -45,8 +45,8 @@ function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
     return result
 end
 
-function mem_parititon_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
-    Cassette.overdub(parition_ctx, partition_table, upper, lower, k)
+function mem_partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
+    Cassette.overdub(partition_ctx, partition_table, upper, lower, k)
 end
 
 """
@@ -68,6 +68,8 @@ julia> GenRFS.partition_press([4,1,1],[0,0,0], 4)
 """
 function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     nx = length(upper)
+    # special case with k == 0
+    k == 0 && return [collect(Int64, zeros(nx))]
     # remove paritions that require too many elements
     a = filter(x -> length(x) <= nx,
                integer_partitions(k))

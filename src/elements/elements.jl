@@ -16,7 +16,7 @@ end
 function sample(rfe::RandomFiniteElement{T})::Vector{T} where {T}
     n = sample_cardinality(rfe)
     sample = Vector{T}(undef, n)
-    for i=1:num
+    for i=1:n
         sample[i] = distribution(rfe)(args(rfe)...)
     end
     sample
@@ -33,7 +33,7 @@ end
 The loglikelihood of a component, `x`, given the distribution contained by the element.
 """
 function support(rfe::RandomFiniteElement{T}, x::T) where T
-    Gen.logpdf(distribution(d), x, args(rfe))
+    Gen.logpdf(distribution(rfe), x, args(rfe)...)
 end
 
 abstract type MonomorphicRFE{T} <: RandomFiniteElement{T} end
