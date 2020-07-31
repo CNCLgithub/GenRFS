@@ -1,12 +1,14 @@
 module GenRFS
 
 using Gen
+using Base.Iterators:take
 
 include("utils.jl")
 
 export AbstractRFS,
     rfs,
-    RFSElements
+    RFSElements,
+    AssociationRecord
 
 """Random Finite Set"""
 abstract type AbstractRFS{T} <: Gen.Distribution{Vector{T}} end
@@ -20,10 +22,13 @@ include("elements/elements.jl")
 const RFSElements{T} = Vector{RandomFiniteElement{T}}
 
 (r::RFS)(es::RFSElements) = Gen.random(r, es)
+(r::RFS)(es::RFSElements, rec::AssociationRecord) = Gen.random(r, es, rec)
 
 mutable struct AssociationRecord
     table::PartitionTable
     logscores::Vector{Float64}
+    # TODO: better way to initialize record ?
+    # At runtime, length of table may be smaller, arrays reassigned
     AssociationRecord(n::Int64) = new(PartitionTable(undef, n),
                                       Vector{Float64}(undef, n))
 end
@@ -40,10 +45,15 @@ end
 function Gen.logpdf(::RFS, xs, elements::RFSElements{T}, record::AssociationRecord) where {T}
     xs = collect(T, xs)
     !contains(elements, length(xs)) && return -Inf
-    logsumexp(first(associations(elements, xs; record = record)))
+    logsumexp(first(associations(elements, xs, record)))
 end
 
 function Gen.random(::RFS, elements::RFSElements{T}) where {T}
+    collect(T, flatten(sample.(elements)))
+end
+
+# TODO: explore ways to amortize association record
+function Gen.random(::RFS, elements::RFSElements{T}, record::AssociationRecord) where {T}
     collect(T, flatten(sample.(elements)))
 end
 
@@ -107,7 +117,8 @@ end
 function associations(es::RFSElements{T}, xs::Vector{T},
                       record::AssociationRecord) where {T}
     ls, table = associations(es, xs)
-    top_n = take(sortperm(ls), length(record))
+    n = min(length(record), length(table))
+    top_n = sortperm(ls, rev = true)[1:n]
     record.table = table[top_n]
     record.logscores = ls[top_n]
     (ls, table)
