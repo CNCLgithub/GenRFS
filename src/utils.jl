@@ -13,6 +13,8 @@ function normalize_weights(log_weights::Vector{Float64})
     return (log_total_weight, log_normalized_weights)
 end
 
+const PartitionTable = Vector{Vector{Vector{Int64}}}
+
 """Returns the partition table given the morphological bounds of RFEs
 
 Each top level entry is a possible partition. Within each partions,
@@ -22,7 +24,7 @@ The elements are ordered by upper morphological bound in descending order.
 
 > NOTE: `Isomorphic elements are not currently supported`
 """
-function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
+function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)::PartitionTable
     @assert issorted(upper, rev = true)
     @assert sum(lower) == 0 # no isomorphic elements
     pressed = partition_press(upper, lower, k)

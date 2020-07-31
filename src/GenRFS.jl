@@ -16,20 +16,32 @@ struct RFS{T} <: AbstractRFS{T} end
 const rfs = RFS{Any}()
 
 include("elements/elements.jl")
+
 const RFSElements{T} = Vector{RandomFiniteElement{T}}
 
 (r::RFS)(es::RFSElements) = Gen.random(r, es)
 
+mutable struct AssociationRecord
+    table::PartitionTable
+    logscores::Vector{Float64}
+    AssociationRecord(n::Int64) = new(PartitionTable(undef, n),
+                                      Vector{Float64}(undef, n))
+end
+
+Base.length(xs::AssociationRecord) = length(xs.logscores)
+
+
 function Gen.logpdf(::RFS, xs, elements::RFSElements{T}) where {T}
     xs = collect(T, xs)
     !contains(elements, length(xs)) && return -Inf
-    logsumexp(associations(elements, xs))
+    logsumexp(first(associations(elements, xs)))
 end
 
-# function Gen.logpdf(::RFS{T}, xs::Vector{T}, elements::RFSElements{T}) where {T}
-#     !contains(elements, length(xs)) && return -Inf
-#     logsumexp(associations(elements, xs))
-# end
+function Gen.logpdf(::RFS, xs, elements::RFSElements{T}, record::AssociationRecord) where {T}
+    xs = collect(T, xs)
+    !contains(elements, length(xs)) && return -Inf
+    logsumexp(first(associations(elements, xs; record = record)))
+end
 
 function Gen.random(::RFS, elements::RFSElements{T}) where {T}
     collect(T, flatten(sample.(elements)))
@@ -59,11 +71,11 @@ function partition(es::RFSElements, n::Int)
     (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
 end
 
+# TODO: consider adding cardinality table
 function support_table(es::RFSElements{T}, xs::Vector{T}) where {T}
-    idx_t = collect(product(es, xs))
-    table = Matrix{Float64}(undef, size(idx_t)...)
-    for i in eachindex(idx_t)
-        table[i] = support(idx_t[i]...)
+    table = Matrix{Float64}(undef, length(es), length(xs))
+    for (i,(e,x)) in enumerate(product(es, xs))
+        table[i] = support(e,x)
     end
     table
 end
@@ -71,6 +83,7 @@ end
 """ Computes the logscore of every correspondence
 
 Returns a vector where each element is indexed in the partition table.
+
 """
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     s_table = support_table(es, xs)
@@ -83,13 +96,21 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
         for (j, assoc) in enumerate(part)
             part_ls += cardinality(es[j], length(assoc))
             isinf(part_ls) && return [-Inf] # no need to continue if impossible
-            isempty(assoc) && continue # support no valid if empty
+            isempty(assoc) && continue # support not valid if empty
             part_ls += sum(s_table[j, assoc])
         end
         ls[i] = part_ls
     end
-    ls
+    ls, p_table
 end
 
+function associations(es::RFSElements{T}, xs::Vector{T},
+                      record::AssociationRecord) where {T}
+    ls, table = associations(es, xs)
+    top_n = take(sortperm(ls), length(record))
+    record.table = table[top_n]
+    record.logscores = ls[top_n]
+    (ls, table)
+end
 
 end # module
