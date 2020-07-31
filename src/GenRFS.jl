@@ -22,7 +22,6 @@ include("elements/elements.jl")
 const RFSElements{T} = Vector{RandomFiniteElement{T}}
 
 (r::RFS)(es::RFSElements) = Gen.random(r, es)
-(r::RFS)(es::RFSElements, rec::AssociationRecord) = Gen.random(r, es, rec)
 
 mutable struct AssociationRecord
     table::PartitionTable
@@ -35,6 +34,7 @@ end
 
 Base.length(xs::AssociationRecord) = length(xs.logscores)
 
+(r::RFS)(es::RFSElements, rec::AssociationRecord) = Gen.random(r, es, rec)
 
 function Gen.logpdf(::RFS, xs, elements::RFSElements{T}) where {T}
     xs = collect(T, xs)
@@ -104,8 +104,8 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     for (i, part) in enumerate(p_table)
         part_ls = 0
         for (j, assoc) in enumerate(part)
+            isinf(part_ls) && break # no need to continue if impossible
             part_ls += cardinality(es[j], length(assoc))
-            isinf(part_ls) && return [-Inf] # no need to continue if impossible
             isempty(assoc) && continue # support not valid if empty
             part_ls += sum(s_table[j, assoc])
         end
@@ -120,7 +120,7 @@ function associations(es::RFSElements{T}, xs::Vector{T},
     n = min(length(record), length(table))
     top_n = sortperm(ls, rev = true)[1:n]
     record.table = table[top_n]
-    record.logscores = ls[top_n]
+    record.logscores = last(normalize_weights(ls[top_n]))
     (ls, table)
 end
 
