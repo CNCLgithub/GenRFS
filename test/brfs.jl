@@ -1,15 +1,14 @@
-using Gen
 
+# construction
+r = 0.3
+be = BernoulliElement{Float64}(r, normal, (0., 1.0))
+brfs = RFSElements{Float64}(undef, 1)
+brfs[1] = be
 
-@gen function sampler(n)
-    rv = normal
-    rv_args = (0., 1.)
-    r = 0.3
-    for i = 1:n
-        @trace(brfs(r, rv, rv_args), :sample => i)
-    end
-end
-
-trace, _ = Gen.generate(sampler, (10,))
-choices = Gen.get_choices(trace)
-println(choices)
+# logpdf
+x0 = []
+@test logpdf(rfs, x0, brfs) == log(1.0 - r)
+x1 = [0.]
+@test logpdf(rfs, x1, brfs) == log(r) + logpdf(normal, 0, (0.,1.))
+x2 = [0., 1.0]
+@test logpdf(rfs, x2, brfs) == -Inf
