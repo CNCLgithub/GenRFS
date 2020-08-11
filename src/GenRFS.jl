@@ -5,10 +5,6 @@ using Base.Iterators:take
 
 include("utils.jl")
 
-export AbstractRFS,
-    rfs,
-    RFSElements,
-    AssociationRecord
 
 """Random Finite Set"""
 abstract type AbstractRFS{T} <: Gen.Distribution{Vector{T}} end
@@ -19,10 +15,18 @@ const rfs = RFS{Any}()
 
 include("elements/elements.jl")
 
+"""A type alias for random finite elements"""
 const RFSElements{T} = Vector{RandomFiniteElement{T}}
 
 (r::RFS)(es::RFSElements) = Gen.random(r, es)
 
+"""Contains a record of the top `n` data associations
+
+Has two fields:
+
+- `table`
+- `logscores`
+"""
 mutable struct AssociationRecord
     table::PartitionTable
     logscores::Vector{Float64}
@@ -123,5 +127,12 @@ function associations(es::RFSElements{T}, xs::Vector{T},
     record.logscores = last(normalize_weights(ls[top_n]))
     (ls, table)
 end
+
+
+export AbstractRFS,
+    rfs,
+    RFSElements,
+    AssociationRecord
+
 
 end # module

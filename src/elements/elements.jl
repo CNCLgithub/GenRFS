@@ -52,3 +52,15 @@ bounds(::IsomorphicRFE) = (1,)
 
 include("bernoulli.jl")
 include("poisson.jl")
+
+# export RandomFiniteElement,
+#     MonomorphicRFE,
+#     EpimorphicRFE,
+#     IsomorphicRFE
+#     distribution,
+#     args,
+#     sample_cardinality,
+#     sample,
+#     cardinality,
+#     support,
+#     bounds
