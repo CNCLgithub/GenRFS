@@ -36,7 +36,8 @@ xs = rfs(pmbrfs)
 
 The loglikelihood of this sample is computing with partial memoization.
 
-> Note: Due to the memoization of the partition table, the first call to `Gen.logpdf` may be slow
+!!! note
+    Due to the memoization of the partition table, the first call to `Gen.logpdf` may be slow
 
 ```@example 1
 Gen.logpdf(rfs, xs, pmbrfs)
