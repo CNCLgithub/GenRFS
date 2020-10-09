@@ -54,7 +54,7 @@ end
 
 # TODO: explore ways to amortize association record
 function Gen.random(::RFS, elements::RFSElements{T}, record::AssociationRecord) where {T}
-    collect(T, flatten(sample.(elements)))
+    Gen.random(rfs, elements)
 end
 
 Gen.has_output_grad(::RFS) = false
@@ -81,11 +81,10 @@ function partition(es::RFSElements, n::Int)
     (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
 end
 
-# TODO: consider adding cardinality table
-function support_table(es::RFSElements{T}, xs::Vector{T}) where {T}
+function rfs_table(es::RFSElements{T}, xs, f::Function)::Matrix{Float64} where {T}
     table = Matrix{Float64}(undef, length(es), length(xs))
     for (i,(e,x)) in enumerate(product(es, xs))
-        table[i] = support(e,x)
+        table[i] = f(e,x)
     end
     table
 end
@@ -96,16 +95,18 @@ Returns a vector where each element is indexed in the partition table.
 
 """
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
-    s_table = support_table(es, xs)
-    # display(s_table)
+    s_table = rfs_table(es, xs, support)
+    c_table = rfs_table(es, collect(0:length(xs)), cardinality)
     p_table = last(partition(es, length(xs)))
-    # display(p_table)
     ls = Vector{Float64}(undef, length(p_table))
-    for (i, part) in enumerate(p_table)
+    n_parts = length(es)
+    for (i, part) = enumerate(p_table)
         part_ls = 0
-        for (j, assoc) in enumerate(part)
+        for j in 1:n_parts
             isinf(part_ls) && break # no need to continue if impossible
-            part_ls += cardinality(es[j], length(assoc))
+            assoc = part[j]
+            nassoc = length(assoc)
+            part_ls += c_table[j, nassoc + 1]
             isempty(assoc) && continue # support not valid if empty
             part_ls += sum(s_table[j, assoc])
         end
@@ -120,7 +121,7 @@ function associations(es::RFSElements{T}, xs::Vector{T},
     n = min(length(record), length(table))
     top_n = sortperm(ls, rev = true)[1:n]
     record.table = table[top_n]
-    record.logscores = last(normalize_weights(ls[top_n]))
+    record.logscores = ls[top_n] # last(normalize_weights(ls[top_n]))
     (ls, table)
 end
 
