@@ -72,9 +72,9 @@ function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     nx = length(upper)
     # special case with k == 0
     k == 0 && return [collect(Int64, zeros(nx))]
-    # remove paritions that require too many elements
-    a = filter(x -> length(x) <= nx,
-               integer_partitions(k))
+
+    # remove partitions that require too many elements
+    a = filter(x -> length(x) <= nx, integer_partitions(k))
     table = convert.(Int64, zeros(length(a), nx))
     for i = 1:length(a)
         v = a[i]
@@ -83,19 +83,31 @@ function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     # remove partitions that have too many assignments for any element
     combs = vcat(filter(r -> all(((upper .- r) .>= 0.) .& ((r .- lower) .>= 0.)),
                            collect(eachrow(table)))'...)
+    
+    # getting all permutations of cardinalities
+    combs_permuted = vcat(map(comb -> collect(unique(permutations(comb))), eachrow(combs))...)
+    # filtering according to the lower and upper bounds
+    combs_filtered = filter(r -> all((upper .- r) .>= 0) && all((r .- lower) .>= 0), combs_permuted)
+    return combs_filtered
+    
+    # old code, I suppose it's more efficient, but need to fix the bug
+    # where first component doesn't ever get 0 observations
+    # in 2 observations, 3 random finite elements scenario
+    
     levels = unique(upper)
     level_idxs = indexin(levels, upper)[2:end]
     push!(level_idxs, nx + 1)
+
     level_perms = []
     beg = 1
     # for each assignment mapping, construct all permutations
     for l = 1:length(levels)
         stp = level_idxs[l] - 1
-        lvl_perm = map(unique ∘ permutations,
-                            eachrow(combs[:, beg:stp]))
+        lvl_perm = map(unique ∘ permutations, eachrow(combs[:, beg:stp]))
         push!(level_perms, lvl_perm)
         beg = stp + 1
     end
+
     # create the full cardinality table across the levels
     pressed = flatten(product.(level_perms...))
     collect(map(x -> vcat(x...), pressed))
