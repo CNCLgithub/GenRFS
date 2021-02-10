@@ -4,7 +4,9 @@ import Base.map # not really sure why we crash without this import
 using Base:tail
 using LRUCache
 using Combinatorics
+using IterTools: groupby, firstrest
 using Base.Iterators:product, flatten, rest
+using DataStructures: DisjointSets, find_root!
 using Cassette: Cassette, @context, overdub, recurse
 
 function normalize_weights(log_weights::Vector{Float64})
@@ -13,7 +15,6 @@ function normalize_weights(log_weights::Vector{Float64})
     return (log_total_weight, log_normalized_weights)
 end
 
-const PartitionTable = Vector{Vector{Vector{Int64}}}
 
 """Returns the partition table given the morphological bounds of RFEs
 
@@ -137,8 +138,8 @@ julia> GenRFS.partition_push([2,1,1], [1,2,3,4])
  [[3, 4], [2], [1]]
 ```
 """
-function partition_push(cs::Vector{Int}, xs::Vector{Int})
-    @assert !isempty(cs)
+function partition_push(cs::Vector{Int64}, xs::Vector{Int64})
+ @assert !isempty(cs)
     c = first(cs)
     n = length(cs)
     base = collect(combinations(xs, c))
@@ -153,4 +154,79 @@ function partition_push(cs::Vector{Int}, xs::Vector{Int})
         append!(result, [[ys, r...] for r in right])
     end
     result
+end
+# function partition_push(cs::Vector{Int64}, xs::Vector{Int64})::PartitionTable
+#     result = PartitionTable()
+#     isempty(cs) && return result
+#     c = first(cs)
+#     base = @>> c combinations(xs) collect(Int64)
+#     rst = collect(rest(cs, 2))
+#     # exit condition
+#     for ys in base
+#         rems = setdiff(xs, ys)
+#         right = partition_push(rst, rems)
+#         # TODO look for speed up here?
+#         append!(result, [[ys, r...] for r in right])
+#     end
+#     result
+# end
+
+const Partition = DisjointSets{Int64}
+const PartitionTable = Vector{Partition}
+
+function foo(
+    cs::Vector{Int64},
+    xs::Vector{Int64},
+)::PartitionTable
+    @assert !isempty(cs)
+    c = first(cs)
+    # @show c
+    rst = collect(rest(cs, 2))
+    # @show rst
+    combs = combinations(xs, c)
+    isempty(rst) && return map(assign_to, combs)
+    @>> combs begin
+        map(y -> foo_inner(y, xs, rst))
+        (ps -> vcat(ps...))
+    end
+end
+
+function foo_inner(y, xs, rst)
+    @>> y begin
+        setdiff(xs)
+        foo(rst)
+        map(p -> assign_to!(p, y))
+    end
+end
+
+function assign_to(y::Int64)::Partition
+    Partition([y])
+end
+function assign_to(y::Vector{Int64})::Partition
+    p = Partition(y)
+    foldl((a,b) -> union!(p, a, b), y)
+    return p
+end
+function assign_to!(p::Partition, y::Vector{Int64})::Partition
+    foreach(x -> push!(p, x), y)
+    foldl((a,b) -> union!(p, a, b), y)
+    return p
+end
+
+partition_indeces(pt::PartitionTable) = map(partition_indeces, pt)
+function partition_indeces(p::Partition)::Vector{Vector{Int64}}
+    @>> p begin
+        groupby(x -> find_root!(p, x))
+        collect(Vector{Int64})
+        reverse
+    end
+end
+
+function bar(cs::Vector{Int64}, xs::Vector{Int64})
+    c = first(cs)
+    ys = combinations(xs, c)
+    rst = collect(rest(cs, 2))
+    @>> ys begin
+        map(y -> foo(xs, y, rst))
+    end
 end

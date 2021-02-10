@@ -1,6 +1,7 @@
 module GenRFS
 
 using Gen
+using Lazy: @>>
 using Base.Iterators:take
 
 include("utils.jl")
