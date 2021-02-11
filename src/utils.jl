@@ -9,6 +9,11 @@ using Base.Iterators:product, flatten, rest
 using DataStructures: DisjointSets, find_root!
 using Cassette: Cassette, @context, overdub, recurse
 
+using BenchmarkTools: @btime
+
+const Partition = DisjointSets{Int64}
+const PartitionTable = Vector{Partition}
+
 function normalize_weights(log_weights::Vector{Float64})
     log_total_weight = logsumexp(log_weights)
     log_normalized_weights = log_weights .- log_total_weight
@@ -29,8 +34,11 @@ function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)::Partit
     @assert issorted(upper, rev = true)
     @assert sum(lower) == 0 # no isomorphic elements
     pressed = partition_press(upper, lower, k)
-    rng = collect(1:k)
-    vcat(map(x -> partition_push(x, rng), pressed)...)
+    rng = collect(Int64, 1:k)
+    @>> pressed begin
+        map(x -> partition_push(x, rng))
+        x -> vcat(x...)
+    end
 end
 
 # Memoizing the partition table for great fun
@@ -51,6 +59,11 @@ end
 function mem_partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     Cassette.overdub(partition_ctx, partition_table, upper, lower, k)
 end
+
+# function filter_bounds(x, u, l)
+#     all(((u - x) .>= 0) .& ((x - l) .>= 0))
+# end
+filter_bounds(x, u, l) = all(((u - x) .>= 0) .& ((x - l) .>= 0))
 
 """
 Returns the combination table for correspondence cardinality.
@@ -74,44 +87,58 @@ function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     # special case with k == 0
     k == 0 && return [collect(Int64, zeros(nx))]
 
-    # remove partitions that require too many elements
+    # obtain the possible cards
     a = filter(x -> length(x) <= nx, integer_partitions(k))
-    table = convert.(Int64, zeros(length(a), nx))
-    for i = 1:length(a)
+    # 5-element Array{Array{Int64,1},1}:
+    #  [1, 1, 1, 1]
+    #  [2, 1, 1]
+    #  [2, 2]
+    #  [3, 1]
+    #  [4]
+    na = length(a)
+    table = fill(0, nx, na)
+    # pad cards
+    for i = 1:na
         v = a[i]
-        table[i, 1:length(v)] = v
+        table[1:length(v), i] = v
     end
-    # remove partitions that have too many assignments for any element
-    combs = vcat(filter(r -> all(((upper .- r) .>= 0.) .& ((r .- lower) .>= 0.)),
-                           collect(eachrow(table)))'...)
-    
+
+    # remove partitions that have too many or too few assignments for any element
+    cfilter = y -> filter(x -> filter_bounds(x, upper, lower), y)
+    combs = @>> table begin
+        eachcol
+        collect(Vector{Int64})
+        cfilter
+        x -> hcat(x...)
+    end
+
     # getting all permutations of cardinalities
-    combs_permuted = vcat(map(comb -> collect(unique(permutations(comb))), eachrow(combs))...)
-    # filtering according to the lower and upper bounds
-    combs_filtered = filter(r -> all((upper .- r) .>= 0) && all((r .- lower) .>= 0), combs_permuted)
-    return combs_filtered
-    
-    # old code, I suppose it's more efficient, but need to fix the bug
-    # where first component doesn't ever get 0 observations
-    # in 2 observations, 3 random finite elements scenario
-    
-    levels = unique(upper)
-    level_idxs = indexin(levels, upper)[2:end]
-    push!(level_idxs, nx + 1)
-
-    level_perms = []
-    beg = 1
-    # for each assignment mapping, construct all permutations
-    for l = 1:length(levels)
-        stp = level_idxs[l] - 1
-        lvl_perm = map(unique ∘ permutations, eachrow(combs[:, beg:stp]))
-        push!(level_perms, lvl_perm)
-        beg = stp + 1
+    combs_permuted = @>> combs begin
+        eachcol
+        map(cfilter ∘ unique ∘ permutations )
+        x -> vcat(x...)
     end
 
-    # create the full cardinality table across the levels
-    pressed = flatten(product.(level_perms...))
-    collect(map(x -> vcat(x...), pressed))
+    ## The code below is more effecient but not fully tested
+    ## for generalization
+
+    # levels = unique(upper)
+    # level_idxs = indexin(levels, upper)
+    # push!(level_idxs, size(combs, 2))
+
+    # level_perms = Vector{Vector{Int64}}[]
+    # beg = 1
+    # # for each assignment mapping, construct all permutations
+    # for stp in level_idxs
+    #     lvl_perm = @>> (combs[:, beg:stp]) begin
+    #         eachcol
+    #         map(cfilter ∘ unique ∘ permutations)
+    #     end
+    #     append!(level_perms, lvl_perm)
+    #     beg = stp + 1
+    # end
+
+    # vcat(level_perms...)
 end
 
 """
@@ -138,78 +165,59 @@ julia> GenRFS.partition_push([2,1,1], [1,2,3,4])
  [[3, 4], [2], [1]]
 ```
 """
-function partition_push(cs::Vector{Int64}, xs::Vector{Int64})
- @assert !isempty(cs)
-    c = first(cs)
-    n = length(cs)
-    base = collect(combinations(xs, c))
-    rst = collect(rest(cs, 2))
-    # exit condition
-    isempty(rst) && return [base]
-    result = collect(Vector{Vector{Int64}}, [])
-    for ys in base
-        rems = setdiff(xs, ys)
-        right = partition_push(rst, rems)
-        # TODO look for speed up here?
-        append!(result, [[ys, r...] for r in right])
-    end
-    result
-end
-# function partition_push(cs::Vector{Int64}, xs::Vector{Int64})::PartitionTable
-#     result = PartitionTable()
-#     isempty(cs) && return result
-#     c = first(cs)
-#     base = @>> c combinations(xs) collect(Int64)
-#     rst = collect(rest(cs, 2))
-#     # exit condition
-#     for ys in base
-#         rems = setdiff(xs, ys)
-#         right = partition_push(rst, rems)
-#         # TODO look for speed up here?
-#         append!(result, [[ys, r...] for r in right])
-#     end
-#     result
-# end
-
-const Partition = DisjointSets{Int64}
-const PartitionTable = Vector{Partition}
-
-function foo(
-    cs::Vector{Int64},
-    xs::Vector{Int64},
-)::PartitionTable
+function partition_push(cs::Vector{Int64}, xs::Vector{Int64})::PartitionTable
     @assert !isempty(cs)
     c = first(cs)
-    # @show c
     rst = collect(rest(cs, 2))
-    # @show rst
     combs = combinations(xs, c)
     isempty(rst) && return map(assign_to, combs)
     @>> combs begin
-        map(y -> foo_inner(y, xs, rst))
+        map(y -> push_inner(y, xs, rst))
         (ps -> vcat(ps...))
     end
 end
 
-function foo_inner(y, xs, rst)
+function push_inner(y, xs, rst)
     @>> y begin
         setdiff(xs)
-        foo(rst)
+        partition_push(rst)
         map(p -> assign_to!(p, y))
     end
 end
 
+"""
+Creating a new partition
+"""
 function assign_to(y::Int64)::Partition
     Partition([y])
 end
+
+"""
+Creating a new partition
+"""
 function assign_to(y::Vector{Int64})::Partition
-    p = Partition(y)
-    foldl((a,b) -> union!(p, a, b), y)
-    return p
+    p = Partition()
+    assign_to!(p, y)
 end
+
+# """
+# Adding a null assignment to an existing partition
+# """
+# function assign_to!(p::Partition, ::Val{e})::Partition
+#     minp = minimum(p) - 1
+#     push!(p, minp)
+#     return p
+# end
+"""
+Adding to an existing partition
+"""
 function assign_to!(p::Partition, y::Vector{Int64})::Partition
     foreach(x -> push!(p, x), y)
-    foldl((a,b) -> union!(p, a, b), y)
+    # minimum and foldl not defined on empy elements
+    minp = isempty(p) ? 0 : minimum(p)
+    minp = min(0, minp)
+    minp -= 1
+    isempty(y) ? push!(p, minp) : foldl((a,b) -> union!(p, a, b), y)
     return p
 end
 
@@ -217,16 +225,9 @@ partition_indeces(pt::PartitionTable) = map(partition_indeces, pt)
 function partition_indeces(p::Partition)::Vector{Vector{Int64}}
     @>> p begin
         groupby(x -> find_root!(p, x))
+        # remove null references
+        map(y -> filter(x -> sum(x) > 0, y))
         collect(Vector{Int64})
         reverse
-    end
-end
-
-function bar(cs::Vector{Int64}, xs::Vector{Int64})
-    c = first(cs)
-    ys = combinations(xs, c)
-    rst = collect(rest(cs, 2))
-    @>> ys begin
-        map(y -> foo(xs, y, rst))
     end
 end
