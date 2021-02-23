@@ -9,8 +9,6 @@ using Base.Iterators:product, flatten, rest
 using DataStructures: DisjointSets, find_root!
 using Cassette: Cassette, @context, overdub, recurse
 
-using BenchmarkTools: @btime
-
 const Partition = DisjointSets{Int64}
 const PartitionTable = Vector{Partition}
 
@@ -30,7 +28,7 @@ The elements are ordered by upper morphological bound in descending order.
 
 > NOTE: `Isomorphic elements are not currently supported`
 """
-function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)::PartitionTable
+function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
     @assert issorted(upper, rev = true)
     @assert sum(lower) == 0 # no isomorphic elements
     pressed = partition_press(upper, lower, k)
@@ -38,6 +36,7 @@ function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)::Partit
     @>> pressed begin
         map(x -> partition_push(x, rng))
         x -> vcat(x...)
+        partition_indeces
     end
 end
 
@@ -165,6 +164,7 @@ julia> GenRFS.partition_push([2,1,1], [1,2,3,4])
  [[3, 4], [2], [1]]
 ```
 """
+
 function partition_push(cs::Vector{Int64}, xs::Vector{Int64})::PartitionTable
     @assert !isempty(cs)
     c = first(cs)
