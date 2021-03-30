@@ -2,7 +2,7 @@ module GenRFS
 
 using Gen
 using Lazy: @>>
-using Base.Iterators:take
+using Base.Iterators: take
 
 include("utils.jl")
 
@@ -12,7 +12,7 @@ export AbstractRFS,
     AssociationRecord
 
 """Random Finite Set"""
-abstract type AbstractRFS{T} <: Gen.Distribution{Vector{T}} end
+abstract type AbstractRFS{T} <: Gen.Distribution{AbstractArray{T}} end
 
 struct RFS{T} <: AbstractRFS{T} end
 
@@ -72,11 +72,16 @@ end
 
 Only valid when the random finite set contains the observed set.
 """
-function partition(es::RFSElements, n::Int)
+function partition(es::RFSElements, n::Int; fast = true)
     # retrieve the power domain for each element
     bs = map(bounds, es)
-    upper = collect(Int64, clamp.(map(last, bs), 0, n))
-    lower = collect(Int64, clamp.(map(first, bs), 0, n))
+    if fast
+        upper = collect(Int64, clamp.(map(last, bs), 0, n))
+        lower = collect(Int64, clamp.(map(first, bs), 0, n))
+    else
+        upper = fill(n, length(es))
+        lower = fill(0, length(es))
+    end
     idxs = sortperm(upper, rev = true)
     # (idxs, partition_table(upper[idxs], lower[idxs], n))
     (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
@@ -95,10 +100,11 @@ end
 Returns a vector where each element is indexed in the partition table.
 
 """
-function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
+function associations(es::RFSElements{T}, xs::Vector{T};
+                      fast = true) where {T}
     s_table = rfs_table(es, xs, support)
     c_table = rfs_table(es, collect(0:length(xs)), cardinality)
-    p_table = last(partition(es, length(xs)))
+    p_table = last(partition(es, length(xs), fast = fast))
     ls = Vector{Float64}(undef, length(p_table))
     n_parts = length(es)
     for (i, part) = enumerate(p_table)
@@ -125,5 +131,8 @@ function associations(es::RFSElements{T}, xs::Vector{T},
     record.logscores = ls[top_n] # last(normalize_weights(ls[top_n]))
     (ls, table)
 end
+
+
+include("analysis/analysis.jl")
 
 end # module
