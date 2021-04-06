@@ -17,7 +17,8 @@ xs = [0.5, -0.5, 0.0, 0.]
 
 n_steps = 10
 
-walk_the_walk(UniformWalk(), n_steps, es, xs)
+walk_the_walk(UniformWalk(), n_steps, es, xs;
+              ret_trajectory=true)
 
-g = sparse_graph(es, xs)
+#g = sparse_graph(es, xs)
 #savegraph("test.gexf", g, MyMLFormat())
