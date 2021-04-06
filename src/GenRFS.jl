@@ -4,6 +4,17 @@ using Gen
 using Lazy: @>>
 using Base.Iterators: take
 
+using PyCall
+
+nx = PyNULL()
+plt = PyNULL()
+
+function __init__()
+    copy!(nx, pyimport("networkx"))
+    copy!(plt, pyimport("matplotlib.pyplot"))
+end
+
+
 include("utils.jl")
 
 export AbstractRFS,
