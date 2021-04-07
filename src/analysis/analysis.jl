@@ -1,2 +1,5 @@
-include("sparse_graph.jl")
+#include("sparse_graph.jl")
+include("utils.jl")
+include("sparse_graph_nx.jl")
 include("walk/walk.jl")
+include("visuals/visuals.jl")

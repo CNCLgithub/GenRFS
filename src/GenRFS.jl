@@ -8,10 +8,12 @@ using PyCall
 
 nx = PyNULL()
 plt = PyNULL()
+animation = PyNULL()
 
 function __init__()
     copy!(nx, pyimport("networkx"))
     copy!(plt, pyimport("matplotlib.pyplot"))
+    copy!(animation, pyimport("matplotlib.animation"))
 end
 
 

@@ -35,7 +35,7 @@ function get_possible_moves(p::Vector{Vector{Int64}}, s_table, c_table)
         
         for j=1:n_es
             j == e && continue
-            isinf(c_table[j, length(del_p[j])+1]) && continue
+            isinf(c_table[j, length(del_p[j])+2]) && continue
             new_p = deepcopy(del_p)
             push!(new_p[j], x)
             sort!(new_p[j])
@@ -43,6 +43,10 @@ function get_possible_moves(p::Vector{Vector{Int64}}, s_table, c_table)
         end
     end
     
+    println("partition $p")
+    println("possible_moves")
+    display(possible_moves)
+    println()
     return possible_moves
 end
 
