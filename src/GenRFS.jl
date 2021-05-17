@@ -25,7 +25,7 @@ const RFSElements{T} = Vector{RandomFiniteElement{T}}
 (r::RFS)(es::RFSElements) = Gen.random(r, es)
 
 mutable struct AssociationRecord
-    table::PartitionTable
+    table
     logscores::Vector{Float64}
     # TODO: better way to initialize record ?
     # At runtime, length of table may be smaller, arrays reassigned
