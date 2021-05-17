@@ -98,7 +98,7 @@ Returns a vector where each element is indexed in the partition table.
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     s_table = rfs_table(es, xs, support)
     c_table = rfs_table(es, collect(0:length(xs)), cardinality)
-    p_table = last(partition(es, length(xs)))
+    idxs, p_table = partition(es, length(xs))
     ls = Vector{Float64}(undef, length(p_table))
     n_parts = length(es)
     for (i, part) = enumerate(p_table)
@@ -107,9 +107,9 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
             isinf(part_ls) && break # no need to continue if impossible
             assoc = part[j]
             nassoc = length(assoc)
-            part_ls += c_table[j, nassoc + 1]
+            part_ls += c_table[idxs[j], nassoc + 1]
             isempty(assoc) && continue # support not valid if empty
-            part_ls += sum(s_table[j, assoc])
+            part_ls += sum(s_table[idxs[j], assoc])
         end
         ls[i] = part_ls
     end
