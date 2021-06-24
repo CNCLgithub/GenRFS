@@ -52,3 +52,4 @@ bounds(::IsomorphicRFE) = (1,)
 
 include("bernoulli.jl")
 include("poisson.jl")
+include("geometric.jl")
