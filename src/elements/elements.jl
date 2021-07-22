@@ -44,10 +44,12 @@ abstract type IsomorphicRFE{T} <: RandomFiniteElement{T} end
 
 
 """The lower and upper bounds of map cardinality"""
-bounds(::RandomFiniteElement) = (0, Inf)
+function bounds(::RandomFiniteElement)::Tuple{Int64, Int64}
+    (0, Inf)
+end
 bounds(::EpimorphicRFE) = (0, Inf)
 bounds(::MonomorphicRFE) = (0, 1)
-bounds(::IsomorphicRFE) = (1,)
+bounds(::IsomorphicRFE) = (1, 1)
 
 
 include("bernoulli.jl")

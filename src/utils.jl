@@ -1,4 +1,4 @@
-export normalize_weights, partition_table
+export normalize_weights, partition_table, modify_partition_ctx!
 
 import Base.map # not really sure why we crash without this import
 using Base:tail
@@ -45,6 +45,10 @@ end
 
 # TODO: add type sig to LRU
 partition_ctx = MemoizeCtx(metadata = LRU(maxsize = 10))
+
+function modify_partition_ctx!(maxsize::Int64)
+    global partition_ctx = MemoizeCtx(metadata = LRU(maxsize = maxsize))
+end
 
 function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
     result = get(ctx.metadata, x => y => z, 0)
