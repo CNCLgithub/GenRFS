@@ -63,7 +63,13 @@ Gen.logpdf_grad(::RFS, value::Vector, args...) = (nothing,)
 
 """ Whether the given RFS can support the cardinality of the observation"""
 function contains(r::RFSElements, n::Int)
-    _min, _max = sum.(zip(map(bounds, r)...))
+    _min = 0
+    _max = 0
+    for e in r
+        l,h = bounds(e)
+        _min += l
+        _max += h
+    end
     n >= _min && n <= _max
 end
 
@@ -74,9 +80,13 @@ Only valid when the random finite set contains the observed set.
 """
 function partition(es::RFSElements, n::Int)
     # retrieve the power domain for each element
-    bs = map(bounds, es)
-    upper = collect(Int64, clamp.(map(last, bs), 0, n))
-    lower = collect(Int64, clamp.(map(first, bs), 0, n))
+    upper = Vector{Int64}(undef, length(es))
+    lower = Vector{Int64}(undef, length(es))
+    @inbounds for i = 1:length(es)
+        _l, _u = bounds(es[i])
+        lower[i] = Int64(clamp(_l, 0, n))
+        upper[i] = Int64(clamp(_u, 0, n))
+    end
     idxs = sortperm(upper, rev = true)
     # (idxs, partition_table(upper[idxs], lower[idxs], n))
     (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
@@ -119,7 +129,10 @@ end
 function associations(es::RFSElements{T}, xs::Vector{T},
                       record::AssociationRecord) where {T}
     ls, table = associations(es, xs)
-    n = min(length(record), length(table))
+    noninf = findall(!isinf, ls)
+    ls = ls[noninf]
+    table = table[noninf]
+    n = min(length(record), length(noninf))
     top_n = sortperm(ls, rev = true)[1:n]
     record.table = table[top_n]
     record.logscores = ls[top_n] # last(normalize_weights(ls[top_n]))
