@@ -4,4 +4,4 @@ using Gen
 
 # TODO flush out these tests
 include("brfs.jl")
-include("possion.jl")
+include("poisson.jl")

@@ -74,22 +74,29 @@ function contains(r::RFSElements, n::Int)
 end
 
 
+include("search.jl")
+
 """ Generates the partition table for a given set of size `n`.
 
 Only valid when the random finite set contains the observed set.
 """
-function partition(es::RFSElements, n::Int)
+function partition(es::RFSElements, s_table::Matrix{Float64})
+    ne, nx = size(s_table)
+
+    # no obs
+    nx == 0 && return falses(nx, ne, 1)
+
     # retrieve the power domain for each element
-    upper = Vector{Int64}(undef, length(es))
-    lower = Vector{Int64}(undef, length(es))
+    upper = Vector{Int64}(undef, ne)
+    lower = Vector{Int64}(undef, ne)
     @inbounds for i = 1:length(es)
         _l, _u = bounds(es[i])
-        lower[i] = Int64(clamp(_l, 0, n))
-        upper[i] = Int64(clamp(_u, 0, n))
+        lower[i] = Int64(clamp(_l, 0, nx))
+        upper[i] = Int64(clamp(_u, 0, nx))
     end
-    idxs = sortperm(upper, rev = true)
-    # (idxs, partition_table(upper[idxs], lower[idxs], n))
-    (idxs, mem_partition_table(upper[idxs], lower[idxs], n))
+    # compute binary associability table
+    a_table = s_table .> -Inf
+    mem_partition_cube(a_table, upper)
 end
 
 function rfs_table(es::RFSElements{T}, xs, f::Function)::Matrix{Float64} where {T}
@@ -108,22 +115,22 @@ Returns a vector where each element is indexed in the partition table.
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     s_table = rfs_table(es, xs, support)
     c_table = rfs_table(es, collect(0:length(xs)), cardinality)
-    idxs, p_table = partition(es, length(xs))
-    ls = Vector{Float64}(undef, length(p_table))
-    n_parts = length(es)
-    for (i, part) = enumerate(p_table)
+    p_cube = partition(es, s_table)
+    nx, ne, np = size(p_cube)
+    ls = Vector{Float64}(undef, np)
+    @inbounds for p = 1:np
         part_ls = 0
-        for j in 1:n_parts
+        for e in 1:ne
             isinf(part_ls) && break # no need to continue if impossible
-            assoc = part[j]
-            nassoc = length(assoc)
-            part_ls += c_table[idxs[j], nassoc + 1]
-            isempty(assoc) && continue # support not valid if empty
-            part_ls += sum(s_table[idxs[j], assoc])
+            assoc = p_cube[:, e, p]
+            nassoc = sum(assoc)
+            part_ls += c_table[e,  nassoc + 1]
+            nassoc == 0 && continue # support not valid if empty
+            part_ls += sum(s_table[e, assoc])
         end
-        ls[i] = part_ls
+        ls[p] = part_ls
     end
-    ls, p_table
+    ls, p_cube
 end
 
 function associations(es::RFSElements{T}, xs::Vector{T},

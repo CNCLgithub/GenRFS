@@ -50,17 +50,21 @@ function modify_partition_ctx!(maxsize::Int64)
     global partition_ctx = MemoizeCtx(metadata = LRU(maxsize = maxsize))
 end
 
-function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_table), x, y, z)
-    result = get(ctx.metadata, x => y => z, 0)
+function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_cube), x, y)
+    # add ability to ignore cache
+    typeof(ctx.metadata) == LRU{Any, Any} &&
+        ctx.metadata.maxsize == 0 &&
+        return partition_cube(x, y)
+    result = get(ctx.metadata, x => y, 0)
     if result === 0
-        result = recurse(ctx, partition_table, x, y, z)
-        ctx.metadata[x => y => z] = result
+        result = recurse(ctx, partition_cube, x, y)
+        ctx.metadata[x => y] = result
     end
     return result
 end
 
-function mem_partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
-    Cassette.overdub(partition_ctx, partition_table, upper, lower, k)
+function mem_partition_cube(a_table::BitMatrix, max_charges::Vector{Int64})
+    Cassette.overdub(partition_ctx, partition_cube, a_table, max_charges)
 end
 
 # function filter_bounds(x, u, l)
