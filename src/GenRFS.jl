@@ -74,8 +74,6 @@ function contains(r::RFSElements, n::Int)
 end
 
 
-include("search.jl")
-
 """ Generates the partition table for a given set of size `n`.
 
 Only valid when the random finite set contains the observed set.

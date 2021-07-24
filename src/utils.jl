@@ -9,8 +9,8 @@ using Base.Iterators:product, flatten, rest
 using DataStructures: DisjointSets, find_root!
 using Cassette: Cassette, @context, overdub, recurse
 
-const Partition = DisjointSets{Int64}
-const PartitionTable = Vector{Partition}
+using LightGraphs
+using FunctionalCollections: pvec, assoc, PersistentVector
 
 function normalize_weights(log_weights::Vector{Float64})
     log_total_weight = logsumexp(log_weights)
@@ -41,6 +41,92 @@ function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
 end
 
 # Memoizing the partition table for great fun
+# function filter_bounds(x, u, l)
+#     all(((u - x) .>= 0) .& ((x - l) .>= 0))
+# end
+filter_bounds(x, u, l) = all(((u - x) .>= 0) .& ((x - l) .>= 0))
+
+
+mutable struct RFTree
+    g::SimpleDiGraph
+    max_depth::Int64
+    es::Dict{Int64, Int64}
+    leaves::Vector{Int64}
+    RFTree(nx) = new(SimpleDiGraph(), nx,
+                     Dict{Int64, Int64}(),
+                     Int64[])
+end
+
+function partition_cube(a_table::BitMatrix, max_charges::Vector{Int64})
+    ne, nx = size(a_table)
+    tree = init_tree(nx)
+    # BFS
+    walk_tree!(tree, pvec(max_charges), a_table)
+    # convert to bit cube
+    cube_from_tree(tree, ne, nx)
+end
+
+function init_tree(nx::Int64)
+    tree = RFTree(nx)
+    g = tree.g
+    # create root node @ 1
+    add_vertex!(g)
+    return tree
+end
+
+function walk_tree!(tree::RFTree, charges::PersistentVector, a_table::BitMatrix)
+    moves = findall(a_table[:, 1] .& (charges .> 0))
+    for m in moves
+        walk_tree!(tree, 1, 1, charges, a_table, m)
+    end
+    return nothing
+end
+function walk_tree!(tree::RFTree, loc::Int64, depth::Int64,
+                    charges::PersistentVector, a_table::BitMatrix,
+                    m::Int64)
+    g = tree.g
+    # add new node
+    add_vertex!(g)
+    v = nv(g)
+    tree.es[v] = m
+    add_edge!(g, loc, v)
+
+    # check to see if done
+    if depth == tree.max_depth
+        push!(tree.leaves, v)
+        return nothing
+    end
+
+    # decrement from charges
+    remaining = assoc(charges, m, charges[m] - 1)
+
+    # figure out next moves
+    moves = findall(a_table[:, depth] .& (remaining .> 0))
+    for m in moves
+        walk_tree!(tree, v, depth + 1, remaining, a_table, m)
+    end
+    return nothing
+end
+
+function cube_from_tree(tree, ne, nx)
+    g = tree.g
+    es = tree.es
+    leaves = tree.leaves
+    nl = length(leaves)
+    bc = falses(nx, ne, nl)
+    @inbounds for i = 1:nl
+        v = leaves[i]
+        x = nx
+        while v != 1
+            bc[x, es[v], i] = true
+            # inc
+            v = first(inneighbors(g, v))
+            x -= 1
+        end
+    end
+    return bc
+end
+
 @context MemoizeCtx
 
 # TODO: add type sig to LRU
@@ -65,177 +151,4 @@ end
 
 function mem_partition_cube(a_table::BitMatrix, max_charges::Vector{Int64})
     Cassette.overdub(partition_ctx, partition_cube, a_table, max_charges)
-end
-
-# function filter_bounds(x, u, l)
-#     all(((u - x) .>= 0) .& ((x - l) .>= 0))
-# end
-filter_bounds(x, u, l) = all(((u - x) .>= 0) .& ((x - l) .>= 0))
-
-"""
-Returns the combination table for correspondence cardinality.
-
-For an ordered set of morphological bounds, returns a table
-where each row describes a different combination of cardinalities of assignments.
-
-ie
-
-```
-julia> GenRFS.partition_press([4,1,1],[0,0,0], 4)
-4-element Array{Array{Int64,1},1}:
- [2, 1, 1]
- [3, 1, 0]
- [3, 0, 1]
- [4, 0, 0]
-```
-"""
-function partition_press(upper::Vector{Int}, lower::Vector{Int}, k::Int)
-    nx = length(upper)
-    # special case with k == 0
-    k == 0 && return [collect(Int64, zeros(nx))]
-
-    # obtain the possible cards
-    a = filter(x -> length(x) <= nx, integer_partitions(k))
-    # 5-element Array{Array{Int64,1},1}:
-    #  [1, 1, 1, 1]
-    #  [2, 1, 1]
-    #  [2, 2]
-    #  [3, 1]
-    #  [4]
-    na = length(a)
-    table = fill(0, nx, na)
-    # pad cards
-    for i = 1:na
-        v = a[i]
-        table[1:length(v), i] = v
-    end
-
-    # remove partitions that have too many or too few assignments for any element
-    cfilter = y -> filter(x -> filter_bounds(x, upper, lower), y)
-    combs = @>> table begin
-        eachcol
-        collect(Vector{Int64})
-        cfilter
-        x -> hcat(x...)
-    end
-
-    # getting all permutations of cardinalities
-    combs_permuted = @>> combs begin
-        eachcol
-        map(cfilter ∘ unique ∘ permutations )
-        x -> vcat(x...)
-    end
-
-    ## The code below is more effecient but not fully tested
-    ## for generalization
-
-    # levels = unique(upper)
-    # level_idxs = indexin(levels, upper)
-    # push!(level_idxs, size(combs, 2))
-
-    # level_perms = Vector{Vector{Int64}}[]
-    # beg = 1
-    # # for each assignment mapping, construct all permutations
-    # for stp in level_idxs
-    #     lvl_perm = @>> (combs[:, beg:stp]) begin
-    #         eachcol
-    #         map(cfilter ∘ unique ∘ permutations)
-    #     end
-    #     append!(level_perms, lvl_perm)
-    #     beg = stp + 1
-    # end
-
-    # vcat(level_perms...)
-end
-
-"""
-Returns a table of all associations for a given cardinality combination.
-
-Rows are the complete disjoint partitioning of the elements in `xs` onto
-elements described in `cs`
-
-eg.
-```
-julia> GenRFS.partition_push([2,1,1], [1,2,3,4])
-12-element Array{Array{Array{Int64,1},1},1}:
- [[1, 2], [3], [4]]
- [[1, 2], [4], [3]]
- [[1, 3], [2], [4]]
- [[1, 3], [4], [2]]
- [[1, 4], [2], [3]]
- [[1, 4], [3], [2]]
- [[2, 3], [1], [4]]
- [[2, 3], [4], [1]]
- [[2, 4], [1], [3]]
- [[2, 4], [3], [1]]
- [[3, 4], [1], [2]]
- [[3, 4], [2], [1]]
-```
-"""
-
-function partition_push(cs::Vector{Int64}, xs::Vector{Int64})::PartitionTable
-    @assert !isempty(cs)
-    c = first(cs)
-    rst = collect(rest(cs, 2))
-    combs = combinations(xs, c)
-    isempty(rst) && return map(assign_to, combs)
-    @>> combs begin
-        map(y -> push_inner(y, xs, rst))
-        (ps -> vcat(ps...))
-    end
-end
-
-function push_inner(y, xs, rst)
-    @>> y begin
-        setdiff(xs)
-        partition_push(rst)
-        map(p -> assign_to!(p, y))
-    end
-end
-
-"""
-Creating a new partition
-"""
-function assign_to(y::Int64)::Partition
-    Partition([y])
-end
-
-"""
-Creating a new partition
-"""
-function assign_to(y::Vector{Int64})::Partition
-    p = Partition()
-    assign_to!(p, y)
-end
-
-# """
-# Adding a null assignment to an existing partition
-# """
-# function assign_to!(p::Partition, ::Val{e})::Partition
-#     minp = minimum(p) - 1
-#     push!(p, minp)
-#     return p
-# end
-"""
-Adding to an existing partition
-"""
-function assign_to!(p::Partition, y::Vector{Int64})::Partition
-    foreach(x -> push!(p, x), y)
-    # minimum and foldl not defined on empy elements
-    minp = isempty(p) ? 0 : minimum(p)
-    minp = min(0, minp)
-    minp -= 1
-    isempty(y) ? push!(p, minp) : foldl((a,b) -> union!(p, a, b), y)
-    return p
-end
-
-partition_indeces(pt::PartitionTable) = map(partition_indeces, pt)
-function partition_indeces(p::Partition)::Vector{Vector{Int64}}
-    @>> p begin
-        groupby(x -> find_root!(p, x))
-        # remove null references
-        map(y -> filter(x -> sum(x) > 0, y))
-        collect(Vector{Int64})
-        reverse
-    end
 end
