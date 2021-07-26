@@ -111,11 +111,13 @@ Returns a vector where each element is indexed in the partition table.
 
 """
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
+    @assert !isempty(es) "elements are empty"
     s_table = rfs_table(es, xs, support)
     c_table = rfs_table(es, collect(0:length(xs)), cardinality)
     p_cube = partition(es, s_table)
     nx, ne, np = size(p_cube)
-    ls = Vector{Float64}(undef, np)
+    #no valid partitions found
+    ls = np == 0 ? [-Inf] : Vector{Float64}(undef, np)
     @inbounds for p = 1:np
         part_ls = 0
         for e in 1:ne
