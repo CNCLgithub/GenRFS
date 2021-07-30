@@ -18,28 +18,6 @@ function normalize_weights(log_weights::Vector{Float64})
     return (log_total_weight, log_normalized_weights)
 end
 
-
-"""Returns the partition table given the morphological bounds of RFEs
-
-Each top level entry is a possible partition. Within each partions,
-each entry describes the associations of observation elements to a given element.
-
-The elements are ordered by upper morphological bound in descending order.
-
-> NOTE: `Isomorphic elements are not currently supported`
-"""
-function partition_table(upper::Vector{Int}, lower::Vector{Int}, k::Int)
-    @assert issorted(upper, rev = true)
-    @assert sum(lower) == 0 # no isomorphic elements
-    pressed = partition_press(upper, lower, k)
-    rng = collect(Int64, 1:k)
-    @>> pressed begin
-        map(x -> partition_push(x, rng))
-        x -> vcat(x...)
-        partition_indeces
-    end
-end
-
 # Memoizing the partition table for great fun
 # function filter_bounds(x, u, l)
 #     all(((u - x) .>= 0) .& ((x - l) .>= 0))
@@ -143,7 +121,7 @@ function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_cube), x, y)
         return partition_cube(x, y)
     result = get(ctx.metadata, x => y, 0)
     if result === 0
-        result = recurse(ctx, partition_cube, x, y)
+        result = partition_cube(x, y)
         ctx.metadata[x => y] = result
     end
     return result
