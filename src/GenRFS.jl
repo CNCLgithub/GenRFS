@@ -62,15 +62,15 @@ Gen.has_output_grad(::RFS) = false
 Gen.logpdf_grad(::RFS, value::Vector, args...) = (nothing,)
 
 """ Whether the given RFS can support the cardinality of the observation"""
-function contains(r::RFSElements, n::Int)
+function contains(r::RFSElements, n::Int)::Bool
     _min = 0
     _max = 0
     for e in r
-        l,h = bounds(e)
-        _min += l
-        _max += h
+        _min += lower(e)
+        _max += upper(e)
     end
-    n >= _min && n <= _max
+    return n >= _min && n <= _max
+    # return (n >= sum(map(lower, r)) && n <= sum(map(upper, r)))
 end
 
 
@@ -85,19 +85,28 @@ function partition(es::RFSElements, s_table::Matrix{Float64})
     nx == 0 && return falses(nx, ne, 1)
 
     # retrieve the power domain for each element
-    upper = Vector{Int64}(undef, ne)
-    lower = Vector{Int64}(undef, ne)
+    us = Vector{Int64}(undef, ne)
+    # lower = Vector{Int64}(undef, ne)
     @inbounds for i = 1:length(es)
-        _l, _u = bounds(es[i])
-        lower[i] = Int64(clamp(_l, 0, nx))
-        upper[i] = Int64(clamp(_u, 0, nx))
+        # _l, _u = bounds(es[i])
+        # lower[i] = Int64(clamp(_l, 0, nx))
+        us[i] = min(upper(es[i]), nx)
     end
     # compute binary associability table
     a_table = s_table .> -Inf
-    mem_partition_cube(a_table, upper)
+    # mem_partition_cube(a_table, upper)
+    partition_cube(a_table, us)
 end
 
-function rfs_table(es::RFSElements{T}, xs, f::Function)::Matrix{Float64} where {T}
+function support_table(es::RFSElements{T}, xs::Vector{T})::Matrix{Float64} where {T}
+    table = Matrix{Float64}(undef, length(es), length(xs))
+    for (i,(e,x)) in enumerate(product(es, xs))
+        table[i] = support(e,x)
+    end
+    return table
+end
+function rfs_table(es::RFSElements{T}, xs::AbstractArray,
+                   f::Function)::Matrix{Float64} where {T}
     table = Matrix{Float64}(undef, length(es), length(xs))
     for (i,(e,x)) in enumerate(product(es, xs))
         table[i] = f(e,x)
@@ -105,26 +114,30 @@ function rfs_table(es::RFSElements{T}, xs, f::Function)::Matrix{Float64} where {
     table
 end
 
+
+
+
 """ Computes the logscore of every correspondence
 
 Returns a vector where each element is indexed in the partition table.
 
 """
 function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
-    s_table = rfs_table(es, xs, support)
+    s_table = support_table(es, xs)
     c_table = rfs_table(es, collect(0:length(xs)), cardinality)
     p_cube = partition(es, s_table)
     nx, ne, np = size(p_cube)
     ls = Vector{Float64}(undef, np)
     @inbounds for p = 1:np
-        part_ls = 0
+        part_ls = 0.
         for e in 1:ne
             isinf(part_ls) && break # no need to continue if impossible
-            assoc = p_cube[:, e, p]
-            nassoc = sum(assoc)
+            # assoc = p_cube[:, e, p]
+            nassoc = sum(p_cube[:, e, p])
             part_ls += c_table[e,  nassoc + 1]
             nassoc == 0 && continue # support not valid if empty
-            part_ls += sum(s_table[e, assoc])
+            part_ls += sum(s_table[e,
+                                   p_cube[:, e, p]])
         end
         ls[p] = part_ls
     end
@@ -134,12 +147,9 @@ end
 function associations(es::RFSElements{T}, xs::Vector{T},
                       record::AssociationRecord) where {T}
     ls, table = associations(es, xs)
-    noninf = findall(!isinf, ls)
-    ls = ls[noninf]
-    table = table[noninf]
-    n = min(length(record), length(noninf))
+    n = min(length(record), length(ls))
     top_n = sortperm(ls, rev = true)[1:n]
-    record.table = table[top_n]
+    record.table = table[:, :, top_n]
     record.logscores = ls[top_n] # last(normalize_weights(ls[top_n]))
     (ls, table)
 end

@@ -32,7 +32,7 @@ end
 """The probability of P(x | dist(rfe))
 The loglikelihood of a component, `x`, given the distribution contained by the element.
 """
-function support(rfe::RandomFiniteElement{T}, x::T) where T
+function support(rfe::RandomFiniteElement{T}, x::T)::Float64 where T
     Gen.logpdf(distribution(rfe), x, args(rfe)...)
 end
 
@@ -50,6 +50,21 @@ end
 bounds(::EpimorphicRFE) = (0, Inf)
 bounds(::MonomorphicRFE) = (0, 1)
 bounds(::IsomorphicRFE) = (1, 1)
+
+function upper(::RandomFiniteElement)::Int64
+    error("Undefined")
+end
+upper(::EpimorphicRFE) = Inf
+upper(::MonomorphicRFE) = 1
+upper(::IsomorphicRFE) = 1
+
+
+function lower(::RandomFiniteElement)::Int64
+    error("Undefined")
+end
+lower(::EpimorphicRFE) = 0
+lower(::MonomorphicRFE) = 0
+lower(::IsomorphicRFE) = 1
 
 
 include("bernoulli.jl")
