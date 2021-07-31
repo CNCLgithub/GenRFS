@@ -1,36 +1,18 @@
-export normalize_weights, partition_table, modify_partition_ctx!
+export mem_partition_cube, modify_partition_ctx!
 
-import Base.map # not really sure why we crash without this import
-using Base:tail
 using LRUCache
-using Combinatorics
-using IterTools: groupby, firstrest
-using Base.Iterators:product, flatten, rest
-using DataStructures: DisjointSets, find_root!
-using Cassette: Cassette, @context, overdub, recurse
+using Cassette: Cassette, @context, overdub
 
 using LightGraphs
 using FunctionalCollections: pvec, assoc, PersistentVector
-
-function normalize_weights(log_weights::Vector{Float64})
-    log_total_weight = logsumexp(log_weights)
-    log_normalized_weights = log_weights .- log_total_weight
-    return (log_total_weight, log_normalized_weights)
-end
-
-# Memoizing the partition table for great fun
-# function filter_bounds(x, u, l)
-#     all(((u - x) .>= 0) .& ((x - l) .>= 0))
-# end
-filter_bounds(x, u, l) = all(((u - x) .>= 0) .& ((x - l) .>= 0))
-
 
 mutable struct RFTree
     g::SimpleDiGraph
     max_depth::Int64
     es::Dict{Int64, Int64}
     leaves::Vector{Int64}
-    RFTree(nx) = new(SimpleDiGraph(), nx,
+    RFTree(nx) = new(SimpleDiGraph(),
+                     nx,
                      Dict{Int64, Int64}(),
                      Int64[])
 end
@@ -57,7 +39,7 @@ function walk_tree!(tree::RFTree, charges::PersistentVector, a_table::BitMatrix)
     for m in moves
         walk_tree!(tree, 1, 1, charges, a_table, m)
     end
-    return nothing
+    nothing
 end
 function walk_tree!(tree::RFTree, loc::Int64, depth::Int64,
                     charges::PersistentVector, a_table::BitMatrix,
@@ -68,25 +50,22 @@ function walk_tree!(tree::RFTree, loc::Int64, depth::Int64,
     v = nv(g)
     tree.es[v] = m
     add_edge!(g, loc, v)
-
     # check to see if done
     if depth == tree.max_depth
         push!(tree.leaves, v)
         return nothing
     end
-
     # decrement from charges
     remaining = assoc(charges, m, charges[m] - 1)
-
     # figure out next moves
     moves = findall(a_table[:, depth] .& (remaining .> 0))
     for m in moves
         walk_tree!(tree, v, depth + 1, remaining, a_table, m)
     end
-    return nothing
+    nothing
 end
 
-function cube_from_tree(tree, ne, nx)
+function cube_from_tree(tree::RFTree, ne::Int64, nx::Int64)
     g = tree.g
     es = tree.es
     leaves = tree.leaves
@@ -105,20 +84,20 @@ function cube_from_tree(tree, ne, nx)
     return bc
 end
 
-@context MemoizeCtx
+const CTX_Key = Pair{BitMatrix, Vector{Int64}}
+const CTX_Val = BitArray{3}
+const CTX_CACHE = LRU{CTX_Key, CTX_Val}
 
-# TODO: add type sig to LRU
-partition_ctx = MemoizeCtx(metadata = LRU(maxsize = 10))
+@context MemoizeCtx
+partition_ctx = MemoizeCtx(metadata = CTX_CACHE(maxsize=100))
 
 function modify_partition_ctx!(maxsize::Int64)
-    global partition_ctx = MemoizeCtx(metadata = LRU(maxsize = maxsize))
+    global partition_ctx = MemoizeCtx(metadata = CTX_CACHE(maxsize=100))
+    nothing
 end
 
-function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_cube), x, y)
-    # add ability to ignore cache
-    typeof(ctx.metadata) == LRU{Any, Any} &&
-        ctx.metadata.maxsize == 0 &&
-        return partition_cube(x, y)
+function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_cube),
+                          x::BitMatrix, y::Vector{Int64})::BitArray{3}
     result = get(ctx.metadata, x => y, 0)
     if result === 0
         result = partition_cube(x, y)
@@ -128,5 +107,6 @@ function Cassette.overdub(ctx::MemoizeCtx, ::typeof(partition_cube), x, y)
 end
 
 function mem_partition_cube(a_table::BitMatrix, max_charges::Vector{Int64})
-    Cassette.overdub(partition_ctx, partition_cube, a_table, max_charges)
+    Cassette.overdub(partition_ctx, partition_cube,
+                     a_table, max_charges)
 end

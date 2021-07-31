@@ -15,15 +15,16 @@ for i = 1:n
     prfs[i] = PoissonElement{Float64}(r, uniform, (-1, 1.0))
 end
 
-xs = fill(0.1, 5)
-using Profile
-using Traceur
-using StatProfilerHTML
+xs = fill(0.1, 8)
 
 Profile.init(delay=1.0e-7,
              n = 10^7)
 @time logpdf(rfs, xs, prfs);
 @time logpdf(rfs, xs, prfs);
+# b = @benchmark logpdf(rfs, xs, prfs);
+# display(b)
+# @time logpdf(rfs, xs, prfs);
+# @time logpdf(rfs, xs, prfs);
 # @Traceur.trace(logpdf(rfs, xs, prfs), modules = [GenRFS]);
 @profilehtml logpdf(rfs, xs, prfs);
 @profilehtml logpdf(rfs, xs, prfs);
