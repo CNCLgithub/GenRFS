@@ -8,5 +8,5 @@ using StatProfilerHTML
 
 # TODO flush out these tests
 include("logscore.jl")
-# include("brfs.jl")
-# include("poisson.jl")
+include("brfs.jl")
+include("poisson.jl")

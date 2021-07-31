@@ -6,7 +6,7 @@ brfs = RFSElements{Float64}(undef, 1)
 brfs[1] = be
 
 # logpdf
-x0 = []
+x0 = Float64[]
 @test logpdf(rfs, x0, brfs) == log(1.0 - r)
 x1 = [0.]
 @test logpdf(rfs, x1, brfs) == log(r) + logpdf(normal, 0., 0.,1.)

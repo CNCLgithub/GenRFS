@@ -3,8 +3,9 @@ module GenRFS
 #################################################################################
 # Dependencies
 #################################################################################
+
 using Gen
-using Lazy: @>>
+using Lazy: @>, @>>
 
 
 export AbstractRFS
@@ -18,6 +19,7 @@ include("elements/elements.jl")
 #################################################################################
 # Random Finite Set
 #################################################################################
+
 """Abstract Random Finite Sets
 
 Defines a distribution over sets implemented as Vector of type `T`

@@ -5,7 +5,7 @@ prfs = RFSElements{Float64}(undef, 1)
 prfs[1] = p1
 
 # logpdf
-x0 = []
+x0 = Float64[]
 @test logpdf(rfs, x0, prfs) == logpdf(poisson, 0, r1)
 
 n = 4
@@ -17,14 +17,11 @@ end
 
 xs = fill(0.1, 8)
 
-Profile.init(delay=1.0e-7,
-             n = 10^7)
-@time logpdf(rfs, xs, prfs);
-@time logpdf(rfs, xs, prfs);
-# b = @benchmark logpdf(rfs, xs, prfs);
-# display(b)
-# @time logpdf(rfs, xs, prfs);
-# @time logpdf(rfs, xs, prfs);
-# @Traceur.trace(logpdf(rfs, xs, prfs), modules = [GenRFS]);
-@profilehtml logpdf(rfs, xs, prfs);
-@profilehtml logpdf(rfs, xs, prfs);
+println("Benchmark: random")
+b = @benchmark random(rfs, prfs);
+display(b)
+println()
+println("Benchmark: logpdf")
+b = @benchmark logpdf(rfs, xs, prfs);
+display(b)
+println()

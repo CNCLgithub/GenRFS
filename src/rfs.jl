@@ -10,15 +10,29 @@ function Gen.logpdf(::RFS, xs::AbstractArray{T},
                     elements::RFSElements{T}) where {T}
     xs = collect(T, xs)
     !contains(elements, length(xs)) && return -Inf
-    logsumexp(first(associations(elements, xs)))
+    @> elements begin
+        associations(xs)
+        first
+        logsumexp
+    end
 end
 Gen.has_output_grad(::RFS) = false
 Gen.logpdf_grad(::RFS, value::Vector, args...) = (nothing,)
 
 function Gen.random(::RFS, elements::RFSElements{T}) where {T}
-    xs = T[]
-    for e in elements
-        sample_to!(xs, e)
+    ne = length(elements)
+    # number of draws from each element
+    ns = Vector{Int64}(undef, ne)
+    @inbounds for i = 1:ne
+        ns[i] = sample_cardinality(elements[i])
+    end
+    # populate ranges
+    xs = Vector{T}(undef, sum(ns))
+    i::Int64 = 1
+    @inbounds for j = 1:ne, _ = 1:ns[j]
+        e = elements[j]
+        xs[i] = distribution(e)(args(e)...)
+        i += 1
     end
     xs
 end
