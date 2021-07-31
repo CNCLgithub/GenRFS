@@ -27,6 +27,7 @@ Parameterized by a collection of random finite elements
 """
 abstract type AbstractRFS{T} <: Gen.Distribution{Vector{T}} end
 
+
 # random finite tree search
 include("rft.jl")
 # random finite sets
