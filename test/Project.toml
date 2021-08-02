@@ -1,0 +1,7 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+Gen = "ea4f424c-a589-11e8-07c0-fd5c91b9da4a"
+Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
+StatProfilerHTML = "a8a75453-ed82-57c9-9e16-4cd1196ecbf5"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Traceur = "37b6cedf-1f77-55f8-9503-c64b63398394"
