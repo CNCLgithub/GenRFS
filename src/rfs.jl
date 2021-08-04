@@ -6,9 +6,14 @@ struct RFS{T} <: AbstractRFS{T} end
 
 const rfs = RFS{Any}()
 
-function Gen.logpdf(::RFS, xs::AbstractArray{T},
+function Gen.logpdf(::RFS,
+                    xs::AbstractArray,
                     elements::RFSElements{T}) where {T}
-    xs = collect(T, xs)
+    Gen.logpdf(rfs, collect(T, xs), elements)
+end
+function Gen.logpdf(::RFS,
+                    xs::Vector{T},
+                    elements::RFSElements{T}) where {T}
     !contains(elements, length(xs)) && return -Inf
     @> elements begin
         associations(xs)
@@ -67,7 +72,7 @@ function partition(es::RFSElements, s_table::Matrix{Float64})
         us[i] = min(upper(es[i]), nx)
     end
     # compute binary associability table
-    a_table = s_table .> -Inf
+    a_table = s_table .!== -Inf
 
     # by pass memoization if cache is set to 0
     if  typeof(partition_ctx.metadata) == LRU{CTX_Key, CTX_Val} &&
@@ -108,6 +113,12 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
             part_ls += sum(s_table[e, _assoc])
         end
         ls[p] = part_ls
+        if part_ls === -Inf
+            display(s_table)
+            display(c_table)
+            display(p_cube[:, :, p])
+            error("-Inf partition")
+        end
     end
     ls, p_cube
 end
