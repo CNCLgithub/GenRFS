@@ -110,8 +110,8 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
             _assoc = p_cube[:, e, p]
             nassoc = sum(_assoc)
             part_ls += c_table[e,  nassoc + 1]
-            nassoc == 0 && continue # support not valid if empty
-            part_ls += sum(s_table[e, _assoc])
+            nassoc === 0 && continue # support not valid if empty
+            part_ls += nassoc === 1 ? first(s_table[e, _assoc]) : sum(s_table[e, _assoc])
         end
         ls[p] = part_ls
         if part_ls === -Inf
