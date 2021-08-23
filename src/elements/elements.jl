@@ -1,5 +1,7 @@
 export RandomFiniteElement, RFSElements
 
+using SpecialFunctions: loggamma
+
 #################################################################################
 # Type definitions
 #################################################################################

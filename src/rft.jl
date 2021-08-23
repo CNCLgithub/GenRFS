@@ -58,7 +58,7 @@ function walk_tree!(tree::RFTree, loc::Int64, depth::Int64,
     # decrement from charges
     remaining = assoc(charges, m, charges[m] - 1)
     # figure out next moves
-    moves = findall(a_table[:, depth] .& (remaining .> 0))
+    moves = findall(a_table[:, depth + 1] .& (remaining .> 0))
     for m in moves
         walk_tree!(tree, v, depth + 1, remaining, a_table, m)
     end
