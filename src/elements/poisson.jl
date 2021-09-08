@@ -9,8 +9,6 @@ end
 distribution(rfe::PoissonElement) = rfe.d
 args(rfe::PoissonElement) = rfe.args
 
-
-# cardinality(rfe::PoissonElement, n::Int) = Gen.logpdf(poisson, n, rfe.λ) + loggamma(n + 1)
 cardinality(rfe::PoissonElement, n::Int) = n < 0 ? -Inf : -(rfe.λ + loggamma(n + 1))
 
 function sample_cardinality(rfe::PoissonElement)
