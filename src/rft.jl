@@ -92,7 +92,7 @@ const CTX_CACHE = LRU{CTX_Key, CTX_Val}
 partition_ctx = MemoizeCtx(metadata = CTX_CACHE(maxsize=100))
 
 function modify_partition_ctx!(maxsize::Int64)
-    global partition_ctx = MemoizeCtx(metadata = CTX_CACHE(maxsize=100))
+    global partition_ctx = MemoizeCtx(metadata = CTX_CACHE(maxsize=maxsize))
     nothing
 end
 
