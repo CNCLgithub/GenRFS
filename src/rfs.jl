@@ -114,12 +114,6 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
             part_ls += nassoc === 1 ? first(s_table[e, _assoc]) : sum(s_table[e, _assoc])
         end
         ls[p] = part_ls
-        if part_ls === -Inf
-            display(s_table)
-            display(c_table)
-            display(p_cube[:, :, p])
-            error("-Inf partition")
-        end
     end
     ls, p_cube
 end
