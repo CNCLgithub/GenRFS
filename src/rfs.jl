@@ -106,7 +106,7 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     ixs = 1:nx
     ies = 1:ne
 
-   @views @inbounds for p = 1:np
+   @inbounds for p = 1:np
         part_ls = 0.0
         for e = ies
             part_ls === -Inf && continue # no need to continue if -Inf
