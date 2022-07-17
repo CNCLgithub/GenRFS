@@ -33,4 +33,7 @@ include("rft.jl")
 # random finite sets
 include("rfs.jl")
 
+# markov search
+include("tree_walk.jl")
+
 end # module
