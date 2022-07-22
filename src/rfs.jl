@@ -103,9 +103,12 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
     nx, ne, np = size(p_cube)
     #no valid partitions found
     ls = np == 0 ? Float64[-Inf] : Vector{Float64}(undef, np)
-    @inbounds for p = 1:np
+    ixs = 1:nx
+    ies = 1:ne
+
+   @inbounds for p = 1:np
         part_ls = 0.0
-        for e in 1:ne
+        for e = ies
             part_ls === -Inf && continue # no need to continue if -Inf
             _assoc = p_cube[:, e, p]
             nassoc = sum(_assoc)
@@ -114,12 +117,19 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
             part_ls += nassoc === 1 ? first(s_table[e, _assoc]) : sum(s_table[e, _assoc])
         end
         ls[p] = part_ls
-        if part_ls === -Inf
-            display(s_table)
-            display(c_table)
-            display(p_cube[:, :, p])
-            error("-Inf partition")
-        end
+
+    # @inbounds for p = 1:np # each partition
+    #     part_ls = 0.0
+    #     @views for e = ies # each element in partition
+    #         nassoc = 0
+    #         for x = ixs # each observation
+    #             (part_ls === -Inf || !p_cube[x, e, p]) && continue # no need to continue if -Inf
+    #             nassoc += 1
+    #             part_ls += s_table[e, x] # support P(x|e)
+    #         end
+    #         part_ls += c_table[e,  nassoc + 1] # cardinality P(|x...| | e)
+    #     end
+    #     ls[p] = part_ls
     end
     ls, p_cube
 end

@@ -76,14 +76,14 @@ abstract type EpimorphicRFE{T} <: RandomFiniteElement{T} end
 abstract type IsomorphicRFE{T} <: RandomFiniteElement{T} end
 
 """The lower and upper bounds of map cardinality"""
-function bounds(::RandomFiniteElement)::Tuple{Int64, Int64}
+function bounds(::RandomFiniteElement)::Tuple{Real, Real}
     (0, Inf)
 end
 bounds(::EpimorphicRFE) = (0, Inf)
 bounds(::MonomorphicRFE) = (0, 1)
 bounds(::IsomorphicRFE) = (1, 1)
 
-function upper(::RandomFiniteElement)::Int64
+function upper(::RandomFiniteElement)::Real
     error("Undefined")
 end
 upper(::EpimorphicRFE) = Inf
@@ -91,7 +91,7 @@ upper(::MonomorphicRFE) = 1
 upper(::IsomorphicRFE) = 1
 
 
-function lower(::RandomFiniteElement)::Int64
+function lower(::RandomFiniteElement)::Real
     error("Undefined")
 end
 lower(::EpimorphicRFE) = 0
