@@ -35,5 +35,6 @@ include("rfs.jl")
 
 # markov search
 include("tree_walk.jl")
+include("mrfs.jl")
 
 end # module

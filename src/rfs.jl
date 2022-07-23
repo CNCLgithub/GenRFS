@@ -11,7 +11,7 @@ function Gen.logpdf(::RFS,
                     elements::RFSElements{T}) where {T}
     Gen.logpdf(rfs, collect(T, xs), elements)
 end
-function Gen.logpdf(::RFS,
+function Gen.logpdf(::RFS{T},
                     xs::Vector{T},
                     elements::RFSElements{T}) where {T}
     !contains(elements, length(xs)) && return -Inf
@@ -24,22 +24,8 @@ end
 Gen.has_output_grad(::RFS) = false
 Gen.logpdf_grad(::RFS, value::Vector, args...) = (nothing,)
 
-function Gen.random(::RFS, elements::RFSElements{T}) where {T}
-    ne = length(elements)
-    # number of draws from each element
-    ns = Vector{Int64}(undef, ne)
-    @inbounds for i = 1:ne
-        ns[i] = sample_cardinality(elements[i])
-    end
-    # populate ranges
-    xs = Vector{T}(undef, sum(ns))
-    i::Int64 = 1
-    @inbounds for j = 1:ne, _ = 1:ns[j]
-        e = elements[j]
-        xs[i] = distribution(e)(args(e)...)
-        i += 1
-    end
-    xs
+function Gen.random(::RFS{T}, elements::RFSElements{T}) where {T}
+    sample_elements(elements)
 end
 (r::RFS)(es::RFSElements) = Gen.random(r, es)
 

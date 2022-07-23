@@ -196,21 +196,26 @@ end
 
 
 function softmax(x::Array{Float64}; t::Float64 = 1.0)
-    x = deepcopy(x)
-    softmax!(x; t = t)
-    return x
+    out = similar(x)
+    softmax!(out, x; t = t)
+    return out
 end
 
-function softmax!(x::Array{Float64}; t::Float64 = 1.0)
+function softmax!(out::Array{Float64}, x::Array{Float64}; t::Float64 = 1.0)
     nx = length(x)
     maxx = maximum(x)
     sxs = 0.0
-    @inbounds for i = 1:nx
-        x[i] = exp((x[i] - maxx) / t)
-        sxs += x[i]
+
+    if maxx == -Inf
+        out .= 1.0 / nx
+        return nothing
     end
-    (isnan(sxs) || iszero(sxs)) && return nothing
-    rmul!(x, 1.0 / sxs)
+
+    @inbounds for i = 1:nx
+        out[i] = @fastmath exp((x[i] - maxx) / t)
+        sxs += out[i]
+    end
+    rmul!(out, 1.0 / sxs)
     return nothing
 end
 

@@ -32,6 +32,24 @@ function sample_cardinality(::RandomFiniteElement)::Int
     error("not implemented")
 end
 
+function sample_elements(elements::RFSElements{T})::Vector{T} where {T}
+    ne = length(elements)
+    # number of draws from each element
+    ns = Vector{Int64}(undef, ne)
+    @inbounds for i = 1:ne
+        ns[i] = sample_cardinality(elements[i])
+    end
+    # populate ranges
+    xs = Vector{T}(undef, sum(ns))
+    i::Int64 = 1
+    @inbounds for j = 1:ne, _ = 1:ns[j]
+        e = elements[j]
+        xs[i] = distribution(e)(args(e)...)
+        i += 1
+    end
+    xs
+end
+
 """Draw a subset from the rfe"""
 function sample_to!(xs::Vector{T}, rfe::RandomFiniteElement{T}) where {T}
     n = sample_cardinality(rfe)
