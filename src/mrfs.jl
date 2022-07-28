@@ -34,15 +34,17 @@ Returns a vector where each element is indexed in the partition table.
 function massociations(es::RFSElements{T}, xs::Vector{T},
                        steps::Int64, t::Float64) where {T}
     state = RTWState(es, xs)
-    for _ = 1:steps
-        random_tree_step!(state; t = t)
+    if !isempty(xs)
+        for _ = 1:steps
+            random_tree_step!(state; t = t)
+        end
     end
-    n = length(state.logscores_map)
+    n = length(state.partition_map)
     ls = Vector{Float64}(undef, n)
-    pt = Array{Bool}(undef, length(xs), length(es), n)
-    @inbounds for (i, (h, l)) in enumerate(state.logscores_map)
+    pt = Array{Bool, 3}(undef, length(xs), length(es), n)
+    @inbounds for (i, (p, l)) in enumerate(state.partition_map)
         ls[i] = l
-        pt[:, :, i] = state.partition_map[h]
+        pt[:, :, i] = p
     end
     ls, BitArray{3}(pt)
 end

@@ -2,10 +2,26 @@ using SHA
 using LinearAlgebra
 using DataStructures
 
-function sample_partition_cube(l_table::Matrix{Float64},
-                               c_table::Matrix{Float64},
-                               max_charges::Vector{Int64})
 
+function support_table(es::RFSElements{T},
+                       xs::Vector{T})::Matrix{Float64} where {T}
+    nx = length(xs)
+    ne = length(es)
+    table = Matrix{Float64}(undef, ne, nx)
+    @inbounds for ei = 1:ne, xi = 1:nx
+        table[ei, xi] = support(es[ei],xs[xi])
+    end
+    table
+end
+function cardinality_table(es::RFSElements{T},
+                       xs::Vector{T})::Matrix{Float64} where {T}
+    nx = length(xs)
+    ne = length(es)
+    table = Matrix{Float64}(undef, ne, nx + 1)
+    @inbounds for ei = 1:ne, xi = 0:nx
+        table[ei, xi+1] = cardinality(es[ei], xi)
+    end
+    table
 end
 
 function max_assignment(l_table::Matrix{Float64},
@@ -14,15 +30,21 @@ function max_assignment(l_table::Matrix{Float64},
     partition = zeros(Bool, size(l_table'))
     max_ls = vec(maximum(l_table, dims = 1))
     # start with the "closest" assignment
-    @inbounds for xi = sortperm(max_ls, rev = true)
+    @inbounds @views for xi = sortperm(max_ls, rev = true)
         # filter out elements that have an upper bound
-        free_elements = findall(vec(sum(partition, dims = 1)) .< max_charges)
+        # free_elements = findall(vec(sum(partition, dims = 1)) .< max_charges)
+        free_elements = findall(count.(eachcol(partition)) .< max_charges)
         # index magic
         ei = free_elements[argmax(l_table[free_elements, xi])]
         partition[xi, ei] = true
     end
     BitMatrix(partition)
 end
+
+function upper_t_size(n::Int64)
+    Int64(n * (n-1) / 2)
+end
+
 
 function ins_kernel(partition::BitMatrix, l_table::Matrix{Float64}, c_table::Matrix{Float64})
     (ne, nx) = size(l_table)
@@ -35,20 +57,29 @@ function ins_kernel!(k_ins::Matrix{Float64},
                     l_table::Matrix{Float64},
                     c_table::Matrix{Float64})::Nothing
     (ne, nx) = size(l_table)
+    # number of assignments per element
     ecs = count.(eachcol(partition)) .+ 1
-    partition = Matrix{Bool}(partition')
-    # total number of assignments per element
-    # inc by one for indeces in c_table
-    @inbounds for x = 1:nx
+    # partition = Matrix{Bool}(partition')
+    @inbounds @views for x = 1:nx
         # currently assigned element
-        ei = findfirst(view(partition, :, x))
-        eil = l_table[ei, x]
-        eic = c_table[ei, ecs[ei] - 1]
-        log_denom = (eil + eic)
+        ei = findfirst(partition[x, :])
+        pxei = l_table[ei, x]
+        pci = c_table[ei, ecs[ei]]
         for ej = 1:ne
-            ej == ei && continue
-            ejc = ecs[ej]
-            k_ins[x, ej] = l_table[ej, x] + c_table[ej, ejc+1]  - log_denom
+            k_ins[x, ej] = if ej == ei
+                # don't reassign
+                -Inf
+            else
+                # k_ins = prob new assignment / prob current assign
+                # P(x | ej) * P(c_j + 1) * P(c_i - 1) /
+                # P(x | ei) * P(c_j)     * P(ci)
+                pcj     = c_table[ej, ecs[ej]]
+                pci_dec = c_table[ei, ecs[ei] - 1]
+                pcj_inc = c_table[ej, ecs[ej] + 1]
+                pxej = l_table[ej, x]
+                k_ins[x, ej] = (pxej + pcj_inc + pci_dec) -
+                    (pxei + pcj + pci)
+            end
         end
     end
     return nothing
@@ -56,39 +87,38 @@ end
 
 function swap_kernel(partition::BitMatrix, l_table::Matrix{Float64})
     (ne, nx) = size(l_table)
-    k_swap = fill(-Inf, (nx, nx))
+    k_swap = Vector{Float64}(undef, upper_t_size(nx))
     swap_kernel!(k_swap, partition, l_table)
     return k_swap
 end
-function swap_kernel!(k_swap::Matrix{Float64},
+function swap_kernel!(k_swap::Vector{Float64},
                       partition::BitMatrix,
                       l_table::Matrix{Float64})::Nothing
-    partition = Matrix{Bool}(partition')
+    # partition = Matrix{Bool}(partition')
     (ne, nx) = size(l_table)
-    @inbounds for a = 1:nx
+    @assert upper_t_size(nx) == length(k_swap) "swap kernel size missmatch"
+    nx == 0 && return nothing
+    i = 0
+    @inbounds @views for a = 1:(nx - 1)
         # currently assigned element
-        ei = findfirst(view(partition, :, a))
+        # ei = findfirst(partition[:, a])
+        ei = findfirst(partition[a, :])
         laei = l_table[ei, a]
-        for b = 1:nx
-            a <= b && continue
-            ej = findfirst(view(partition, :, b))
+        for b = (a+1):nx
+            i += 1
+            # ej = findfirst(view(partition, :, b))
+            ej = findfirst(partition[b, :])
             if ei == ej
                 # can't swap when assigned to same element
-                k_swap[b, a] = -Inf
+                k_swap[i] = -Inf
                 continue
             end
             lbej = l_table[ej, b]
             lbei = l_table[ei, b]
             laej = l_table[ej, a]
             # upper triangle
-            k_swap[b, a] = (laej - laei) + (lbei - lbej)
-            # if iszero(k_swap[b, a])
-            #     @show a => b
-            #     @show lbej
-            #     @show lbei
-            #     @show laej
-            #     @show laei
-            # end
+            # P(a|ej) * P(b|ei) / P(a|ei) * P(b|ej)
+            k_swap[i] = (laej + lbei) - (laei + lbej)
         end
     end
     return nothing
@@ -96,7 +126,7 @@ end
 
 function partition_score(partition::BitMatrix, ml::Matrix{Float64}, mc::Matrix{Float64})::Float64
     part_ls = 0.0
-    partition = Matrix{Bool}(partition)
+    # partition = Matrix{Bool}(partition)
     nx,ne = size(partition)
     @inbounds for e = 1:ne
         part_ls === -Inf && break # no need to continue if -Inf
@@ -118,15 +148,16 @@ mutable struct RTWState
     ml::Matrix{Float64}
     mc::Matrix{Float64}
     partition::BitMatrix
-    k_swp::Matrix{Float64}
+    k_swp::Vector{Float64}
     k_ins::Matrix{Float64}
-    partition_map::Dict{String, BitMatrix}
-    logscores_map::Dict{String, Float64}
+    partition_map::Dict{BitMatrix, Float64}
+    # partition_map::Dict{String, BitMatrix}
+    # logscores_map::Dict{String, Float64}
 end
 
 function RTWState(es::RFSElements{T}, xs::Vector{T}) where {T}
-    ml = rfs_table(es, xs, support)
-    mc = rfs_table(es, collect(0:length(xs)), cardinality)
+    ml = support_table(es, xs)
+    mc = cardinality_table(es, xs)
     us = Int64.(clamp.(upper.(es), 0, length(xs)))
     #start off with arbitrary partition
     pstart = max_assignment(ml, mc, us)
@@ -135,10 +166,11 @@ function RTWState(es::RFSElements{T}, xs::Vector{T}) where {T}
     k_swp = swap_kernel(pstart, ml)
     k_ins = ins_kernel(pstart, ml, mc)
     # add entries to queues
-    hs = hash_pmat(pstart)
-    pm = Dict{String, BitMatrix}(hs => pstart)
-    lm = Dict{String, Float64}(hs => ls)
-    RTWState(ml, mc, pstart, k_swp, k_ins, pm, lm)
+    # hs = hash_pmat(pstart)
+    pm = Dict{BitMatrix, Float64}(pstart => ls)
+    # pm = Dict{String, BitMatrix}(hs => pstart)
+    # lm = Dict{String, Float64}(hs => ls)
+    RTWState(ml, mc, pstart, k_swp, k_ins, pm)
 end
 
 function hash_pmat(pmat::BitArray)
@@ -171,10 +203,12 @@ function update_from_move!(st::RTWState)
     swap_kernel!(st.k_swp, st.partition, st.ml)
     ins_kernel!(st.k_ins, st.partition, st.ml, st.mc)
 
-    hs = hash_pmat(st.partition)
+    # hs = hash_pmat(st.partition)
     pt = BitMatrix(st.partition)
-    st.partition_map[hs] = pt
-    st.logscores_map[hs] = partition_score(pt, st.ml, st.mc)
+    # pt = st.partition
+    st.partition_map[pt] = partition_score(pt, st.ml, st.mc)
+    # st.partition_map[hs] = pt
+    # st.logscores_map[hs] = partition_score(pt, st.ml, st.mc)
     return nothing
 end
 
@@ -202,6 +236,7 @@ function softmax(x::Array{Float64}; t::Float64 = 1.0)
 end
 
 function softmax!(out::Array{Float64}, x::Array{Float64}; t::Float64 = 1.0)
+    isempty(x) && return x
     nx = length(x)
     maxx = maximum(x)
     sxs = 0.0
@@ -212,27 +247,55 @@ function softmax!(out::Array{Float64}, x::Array{Float64}; t::Float64 = 1.0)
     end
 
     @inbounds for i = 1:nx
-        out[i] = @fastmath exp((x[i] - maxx) / t)
-        sxs += out[i]
+        v = @fastmath exp((x[i] - maxx) / t)
+        sxs += v
+        out[i] = v
     end
     rmul!(out, 1.0 / sxs)
     return nothing
 end
 
+# adapted from
+# https://stackoverflow.com/a/68581180
+function upper_t_to_matrix(k::Int64, n::Int64)
+    i = n - 1 - floor(Int,sqrt(-8*k + 4*n*(n-1) + 1)/2 - 0.5)
+    j = k + i + ( (n-i+1)*(n-i) - n*(n-1) )÷2
+    return i, j
+end
+
+
+
 function random_tree_step!(st::RTWState;
                            t::Float64 = 1.0)::Nothing
-    pswp = softmax(st.k_swp, t = t)
-    swpi = categorical(vec(pswp))
-    pins = softmax(st.k_ins, t = t)
-    insi = categorical(vec(pins))
-    if st.k_swp[swpi] > st.k_ins[insi]
+    if isinf(maximum(st.k_ins))
+        insi = 0
+        pins = -Inf
+    else
+        softmax!(st.k_ins, st.k_ins, t = t)
+        insi = categorical(vec(st.k_ins))
+        pins = st.k_ins[insi]
+    end
+
+    # swap kernel could be empty if 1 obs
+    if isempty(st.k_swp)
+        swpi = 0
+        pswap = -Inf
+    else
+        softmax!(st.k_swp, st.k_swp, t = t)
+        swpi = categorical(st.k_swp)
+        pswap = st.k_swp[swpi]
+    end
+
+    # case where no valid moves left
+    isinf(pswap) && isinf(pins) && return nothing
+
+    nx = size(st.k_ins, 1)
+    if pswap > pins
         # swap move
-        b = Int(((swpi-1) % size(st.k_swp, 1)) + 1)
-        a = Int(ceil(swpi / size(st.k_swp, 2)))
+        a, b = upper_t_to_matrix(swpi, nx)
         swap_move!(st, a, b)
     else
         # insertion
-        nx = size(st.k_ins, 1)
         (x, e) = Int(((insi-1) % nx) + 1), Int(ceil(insi / nx))
         insert_move!(st, x, e)
     end

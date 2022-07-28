@@ -72,7 +72,7 @@ function rfs_table(es::RFSElements{T}, xs::AbstractArray,
                    f::Function)::Matrix{Float64} where {T}
     table = Matrix{Float64}(undef, length(es), length(xs))
     for (i,(e,x)) in enumerate(product(es, xs))
-        table[i] = f(e,x)
+        @inbounds table[i] = f(e,x)
     end
     table
 end
@@ -94,28 +94,18 @@ function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
 
    @inbounds for p = 1:np
         part_ls = 0.0
-        for e = ies
+        @inbounds @views for e in ies
             part_ls === -Inf && continue # no need to continue if -Inf
-            _assoc = p_cube[:, e, p]
-            nassoc = sum(_assoc)
-            part_ls += c_table[e,  nassoc + 1]
-            nassoc === 0 && continue # support not valid if empty
-            part_ls += nassoc === 1 ? first(s_table[e, _assoc]) : sum(s_table[e, _assoc])
+            nassoc = 1
+            assoc_ls = 0.0
+            for x = ixs
+                p_cube[x, e, p] || continue
+                nassoc += 1
+                part_ls += s_table[e, x]
+            end
+            part_ls += c_table[e, nassoc]
         end
         ls[p] = part_ls
-
-    # @inbounds for p = 1:np # each partition
-    #     part_ls = 0.0
-    #     @views for e = ies # each element in partition
-    #         nassoc = 0
-    #         for x = ixs # each observation
-    #             (part_ls === -Inf || !p_cube[x, e, p]) && continue # no need to continue if -Inf
-    #             nassoc += 1
-    #             part_ls += s_table[e, x] # support P(x|e)
-    #         end
-    #         part_ls += c_table[e,  nassoc + 1] # cardinality P(|x...| | e)
-    #     end
-    #     ls[p] = part_ls
     end
     ls, p_cube
 end
