@@ -99,7 +99,7 @@ mrfs_float = MRFS{Float64}()
 steps = 20 # number of steps for random walk
 temp = 1.0 # temperature of kernel; 1.0 -> +Inf is choatic, 1.0 -> 0. is greedy
 xs = mrfs_float(poissons, steps, temp)
-ls = Gen.logpdf(rfs, xs, poissons, steps, temp)
+ls = Gen.logpdf(mrfs_float, xs, poissons, steps, temp)
 ```
 
 You can empirically evaluate the coverage of the entire partition mass space to verify steps and temp. 
