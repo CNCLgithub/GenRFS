@@ -166,8 +166,8 @@ function RTWState(es::RFSElements{T}, xs::Vector{T}) where {T}
     k_swp = swap_kernel(pstart, ml)
     k_ins = ins_kernel(pstart, ml, mc)
     # add entries to queues
-    # hs = hash_pmat(pstart)
-    pm = Dict{BitMatrix, Float64}(pstart => ls)
+    # dereference initial partition
+    pm = Dict{BitMatrix, Float64}(BitMatrix(pstart) => ls)
     # pm = Dict{String, BitMatrix}(hs => pstart)
     # lm = Dict{String, Float64}(hs => ls)
     RTWState(ml, mc, pstart, k_swp, k_ins, pm)
@@ -198,17 +198,13 @@ function insert_move!(st::RTWState, x::Int, e::Int)::Nothing
 end
 
 function update_from_move!(st::RTWState)
-    #TODO: is it faster to shift values around
-    # for swap and insert moves independently
     swap_kernel!(st.k_swp, st.partition, st.ml)
     ins_kernel!(st.k_ins, st.partition, st.ml, st.mc)
-
-    # hs = hash_pmat(st.partition)
+    # already visited
+    haskey(st.partition_map, st.partition) && return nothing
+    # dereference new key
     pt = BitMatrix(st.partition)
-    # pt = st.partition
     st.partition_map[pt] = partition_score(pt, st.ml, st.mc)
-    # st.partition_map[hs] = pt
-    # st.logscores_map[hs] = partition_score(pt, st.ml, st.mc)
     return nothing
 end
 
