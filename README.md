@@ -114,7 +114,14 @@ TODO
 You can use `RFS{T}` and `MRFS{T}` anywhere you can  `Gen.Distribitions{T}`.
 
 ``` julia
-@gen static function 
+@gen static function foo()
+    r = @trace(beta(2., 2.), :r)
+    mu = @trace(uniform(-3., 3.), :mu)
+    b = BernoulliElement{Float64}(r, normal, (mu, 1.0))
+    rfe = RFSElements{Float64}([b])
+    xs = @trace(mrfs_float(rfe), :xs)
+    return xs
+end
 ```
 
 ## TODOS
