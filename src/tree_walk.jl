@@ -283,10 +283,13 @@ function random_tree_step!(st::RTWState;
     end
 
     # case where no valid moves left
-    isinf(pswap) && isinf(pins) && return nothing
+    if isinf(pswap) && isinf(pins)
+        update_from_move!(st)
+        return nothing
+    end
 
     nx = size(st.k_ins, 1)
-    if pswap > pins
+    if pswap >= pins
         # swap move
         a, b = upper_t_to_matrix(swpi, nx)
         swap_move!(st, a, b)
