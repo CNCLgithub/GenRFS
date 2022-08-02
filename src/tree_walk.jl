@@ -148,11 +148,12 @@ mutable struct RTWState
     ml::Matrix{Float64}
     mc::Matrix{Float64}
     partition::BitMatrix
+    pscore::Float64
     k_swp::Vector{Float64}
     k_ins::Matrix{Float64}
+    nk_swp::Vector{Float64}
+    nk_ins::Matrix{Float64}
     partition_map::Dict{BitMatrix, Float64}
-    # partition_map::Dict{String, BitMatrix}
-    # logscores_map::Dict{String, Float64}
 end
 
 function RTWState(es::RFSElements{T}, xs::Vector{T}) where {T}
@@ -165,12 +166,13 @@ function RTWState(es::RFSElements{T}, xs::Vector{T}) where {T}
     # initialize kernels
     k_swp = swap_kernel(pstart, ml)
     k_ins = ins_kernel(pstart, ml, mc)
+    # normalized kernels
+    nk_swp = Vector{Float64}(undef, length(k_swp))
+    nk_ins = Matrix{Float64}(undef, size(k_ins))
     # add entries to queues
     # dereference initial partition
     pm = Dict{BitMatrix, Float64}(BitMatrix(pstart) => ls)
-    # pm = Dict{String, BitMatrix}(hs => pstart)
-    # lm = Dict{String, Float64}(hs => ls)
-    RTWState(ml, mc, pstart, k_swp, k_ins, pm)
+    RTWState(ml, mc, pstart, ls, k_swp, k_ins, nk_swp, nk_ins, pm)
 end
 
 function hash_pmat(pmat::BitArray)
@@ -197,14 +199,19 @@ function insert_move!(st::RTWState, x::Int, e::Int)::Nothing
     return nothing
 end
 
-function update_from_move!(st::RTWState)
+function update_from_move!(st::RTWState, w::Float64)
+    # update kernels
     swap_kernel!(st.k_swp, st.partition, st.ml)
     ins_kernel!(st.k_ins, st.partition, st.ml, st.mc)
-    # already visited
+    # current partition already visited
     haskey(st.partition_map, st.partition) && return nothing
     # dereference new key
     pt = BitMatrix(st.partition)
-    st.partition_map[pt] = partition_score(pt, st.ml, st.mc)
+    # increment score
+    pscore = st.pscore + w
+    st.partition_map[pt] = pscore
+    st.pscore = pscore
+    # st.partition_map[pt] = partition_score(pt, st.ml, st.mc)
     return nothing
 end
 
@@ -238,7 +245,7 @@ function softmax!(out::Array{Float64}, x::Array{Float64}; t::Float64 = 1.0)
     sxs = 0.0
 
     if maxx == -Inf
-        out .= 1.0 / nx
+        out[:] .= 1.0 / nx
         return nothing
     end
 
@@ -267,8 +274,8 @@ function random_tree_step!(st::RTWState;
         insi = 0
         pins = -Inf
     else
-        softmax!(st.k_ins, st.k_ins, t = t)
-        insi = categorical(vec(st.k_ins))
+        softmax!(st.nk_ins, st.k_ins, t = t)
+        insi = categorical(vec(st.nk_ins))
         pins = st.k_ins[insi]
     end
 
@@ -277,27 +284,29 @@ function random_tree_step!(st::RTWState;
         swpi = 0
         pswap = -Inf
     else
-        softmax!(st.k_swp, st.k_swp, t = t)
-        swpi = categorical(st.k_swp)
+        softmax!(st.nk_swp, st.k_swp, t = t)
+        swpi = categorical(st.nk_swp)
         pswap = st.k_swp[swpi]
     end
 
     # case where no valid moves left
     if isinf(pswap) && isinf(pins)
-        update_from_move!(st)
+        update_from_move!(st, 0.)
         return nothing
     end
 
     nx = size(st.k_ins, 1)
-    if pswap >= pins
+    w = if pswap >= pins
         # swap move
         a, b = upper_t_to_matrix(swpi, nx)
         swap_move!(st, a, b)
+        pswap
     else
         # insertion
         (x, e) = Int(((insi-1) % nx) + 1), Int(ceil(insi / nx))
         insert_move!(st, x, e)
+        pins
     end
-    update_from_move!(st)
+    update_from_move!(st, w)
     return nothing
 end
