@@ -31,12 +31,12 @@ function max_assignment(l_table::Matrix{Float64},
     max_ls = vec(maximum(l_table, dims = 1))
     # start with the "closest" assignment
     @inbounds @views for xi = sortperm(max_ls, rev = true)
-        # filter out elements that have an upper bound
-        # free_elements = findall(vec(sum(partition, dims = 1)) .< max_charges)
-        free_elements = findall(count.(eachcol(partition)) .< max_charges)
-        # index magic
-        ei = free_elements[argmax(l_table[free_elements, xi])]
-        partition[xi, ei] = true
+        # prefer most restricted elements in terms of constraints
+        for ei = sortperm(max_charges)
+            count(partition[:, ei]) >= max_charges[ei] && continue
+            partition[xi, ei] = true
+            break
+        end
     end
     BitMatrix(partition)
 end
@@ -270,7 +270,9 @@ end
 
 function random_tree_step!(st::RTWState;
                            t::Float64 = 1.0)::Nothing
-    if isinf(maximum(st.k_ins))
+
+    mx_kins = maximum(st.k_ins)
+    if isinf(mx_kins) || isnan(mx_kins)
         insi = 0
         pins = -Inf
     else
