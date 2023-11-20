@@ -10,13 +10,12 @@ struct RFSTrace{T} <: Gen.Trace
     pscores::Vector{Float64}
 end
 
-
-
 @inline Gen.get_args(trace::RFSTrace) = trace.args
 @inline Gen.get_retval(trace::RFSTrace) = trace.retval
 @inline Gen.get_score(trace::RFSTrace) = trace.score
 @inline Gen.get_choices(trace::RFSTrace) = trace.choices
 @inline Gen.get_gen_fn(trace::RFSTrace) = trace.gen_fn
+@inline Gen.project(trace::RFSTrace, ::EmptySelection) = trace.score
 
 struct RFGM{T} <: GenerativeFunction{PersistentVector{T}, RFSTrace{T}}
     estimator::RFS{T}
@@ -38,7 +37,8 @@ function Gen.propose(gen_fn::RFGM{T}, args::Tuple) where {T}
     nx = length(xs)
     choices = choicemap()
     @inbounds for i = 1:nx
-        set_submap!(choices, i, xs[i])
+        choices[i] = xs[i]
+        # set_submap!(choices, i, xs[i])
     end
     weight = Gen.logpdf(gen_fn.estimator, xs, es, gen_fn.estimator_args...)
     (choices, weight, xs)
@@ -50,7 +50,8 @@ function RFSTrace(gen_fn::RFGM{T}, es, xs) where {T}
     nx = length(xs)
     choices = choicemap()
     @inbounds for i = 1:nx
-        set_submap!(choices, i, xs[i])
+        choices[i] = xs[i]
+        # set_submap!(choices, i, xs[i])
     end
     RFSTrace{T}(gen_fn, (es, ), choices, PersistentVector{T}(xs), weight, ptensor, pls)
 end
@@ -72,6 +73,8 @@ function Gen.generate(gen_fn::RFGM{T}, args::Tuple, choices::ChoiceMap) where {T
     nx = length(xs)
     @assert contains(es, nx) "subset too small or too large for RFS"
     trace = RFSTrace(gen_fn, es, xs)
+    println("Calling generate with constraints")
+    display(trace.choices)
     (trace, trace.score)
 end
 
@@ -129,8 +132,42 @@ end
 
 # CASE 1: new elements
 # CASE 2: new observation; all or none?
-#
-function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple,
+
+function compare_rfes(a, b)
+    prev_length = length(a)
+    new_length = length(b)
+    diffs = Dict{Int64, Gen.Diff}()
+    for (ei, ea) = enumerate(a)
+        if !in(ea, b)
+            diffs[ei] = UnknownChange()
+        end
+    end
+    if isempty(diffs)
+        return NoChange()
+    else
+        return Gen.VectorDiff(prev_length, new_length, diffs)
+    end
+end
+
+function Gen.update(trace::RFSTrace{T}, args::Tuple{<:Gen.UnknownChange},
+        argdiffs::Tuple, cm::ChoiceMap) where {T}
+    prev_args = get_args(trace)
+    vdiff = compare_rfes(prev_args[1], args[1])
+    Gen.update(trace, args, (vdiff,), cm)
+end
+
+# TODO: update into new parent address? (e.g., Gen.Unfold)
+# function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.NoChange},
+#                     ::ChoiceMap) where {T}
+#     es = args[1]
+#     xs = to_array(choices, T)
+#     nx = length(xs)
+#     @assert contains(es, nx) "subset too small or too large for RFS"
+#     trace = RFSTrace(gen_fn, es, xs)
+#     (trace, trace.score)
+# end
+
+function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.VectorDiff},
                     ::EmptyChoiceMap) where {T}
     gen_fn = get_gen_fn(trace)
     prev_es = get_args(trace)[1]
@@ -153,7 +190,7 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple,
     state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
                           to_revise)
     process_retained!(get_gen_fn(trace), args, argdiffs, state)
-    new_trace = RFSTrace{T}(gen_fn, args, EmptyChoiceMap(),
+    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
                             xs, logsumexp(state.new_pls),
                             state.ptensor, state.new_pls)
 
@@ -161,4 +198,45 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple,
     retdiff = NoChange()
     discard = choicemap()
     return (new_trace, weight, retdiff, discard)
+end
+
+function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
+        argdiffs::Tuple{UnknownChange}, selection::Selection) where {T}
+    prev_args = get_args(trace)
+    vdiff = compare_rfes(prev_args[1], args[1])
+    Gen.regenerate(trace, args, (vdiff,), selection)
+end
+function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
+        argdiffs::Tuple{<:Gen.VectorDiff}, selection::EmptySelection) where {T}
+
+    gen_fn = get_gen_fn(trace)
+    prev_es = get_args(trace)[1]
+    ptensor = trace.ptensor
+    prev_pls = trace.pscores
+    xs = trace.retval
+    new_es = args[1]
+    ediffs = argdiffs[1]
+    @assert ediffs.new_length == ediffs.prev_length "changed number of elements not currentl supported"
+
+    if isempty(ediffs.updated)
+        # TODO: return no change
+        return trace
+    end
+
+    to_revise = collect(Int64, keys(ediffs.updated))
+
+    new_es = new_es[to_revise]
+    prev_es = prev_es[to_revise]
+    state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
+                          to_revise)
+    process_retained!(get_gen_fn(trace), args, argdiffs, state)
+    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
+                            xs, logsumexp(state.new_pls),
+                            state.ptensor, state.new_pls)
+
+    weight = new_trace.score - trace.score
+    retdiff = NoChange()
+    discard = choicemap()
+
+    return (new_trace, weight, retdiff)
 end
