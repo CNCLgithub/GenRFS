@@ -11,7 +11,7 @@ Describes a distrubution over subsets with some cardinality and inner random
  variable.
 """
 abstract type RandomFiniteElement{T} end
-const RFSElements{T} = Vector{RandomFiniteElement{T}}
+const RFSElements{T} = AbstractVector{<:RandomFiniteElement{T}}
 
 #################################################################################
 # Methods
