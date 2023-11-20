@@ -94,7 +94,7 @@ function associations(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
 
    @inbounds for p = 1:np
         part_ls = 0.0
-        @inbounds @views for e in ies
+        for e in ies
             part_ls === -Inf && continue # no need to continue if -Inf
             nassoc = 1
             assoc_ls = 0.0
