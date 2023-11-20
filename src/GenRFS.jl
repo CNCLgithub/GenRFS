@@ -37,5 +37,6 @@ include("rfs.jl")
 include("tree_walk.jl")
 include("mrfs.jl")
 include("convergence.jl")
+include("rfgm.jl")
 
 end # module

@@ -9,7 +9,7 @@ function Gen.logpdf(r::MRFS{T},
                     temp::Float64) where {T}
     !contains(elements, length(xs)) && return -Inf
     @> elements begin
-        massociations(xs, steps, temp)
+        associations(xs, steps, temp)
         first
         logsumexp
     end
@@ -31,7 +31,7 @@ end
 Returns a vector where each element is indexed in the partition table.
 
 """
-function massociations(es::RFSElements{T}, xs::Vector{T},
+function associations(::MRFS{T}, es::RFSElements{T}, xs::Vector{T},
                        steps::Int64, t::Float64) where {T}
     state = RTWState(es, xs)
     if !isempty(xs)

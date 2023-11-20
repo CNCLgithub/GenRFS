@@ -6,13 +6,13 @@ struct RFS{T} <: AbstractRFS{T} end
 
 const rfs = RFS{Any}()
 
-function Gen.logpdf(::RFS,
-                    xs::AbstractArray,
-                    elements::RFSElements{T}) where {T}
-    Gen.logpdf(rfs, collect(T, xs), elements)
-end
+# function Gen.logpdf(::RFS,
+#                     xs::AbstractArray,
+#                     elements::RFSElements{T}) where {T}
+#     Gen.logpdf(rfs, collect(T, xs), elements)
+# end
 function Gen.logpdf(::RFS{T},
-                    xs::Vector{T},
+                    xs::AbstractVector{T},
                     elements::RFSElements{T}) where {T}
     !contains(elements, length(xs)) && return -Inf
     @> elements begin
@@ -82,7 +82,7 @@ end
 Returns a vector where each element is indexed in the partition table.
 
 """
-function associations(es::RFSElements{T}, xs::Vector{T}) where {T}
+function associations(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     s_table = rfs_table(es, xs, support)
     c_table = rfs_table(es, collect(0:length(xs)), cardinality)
     p_cube = partition(es, s_table)
