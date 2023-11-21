@@ -100,6 +100,24 @@ function _test_gm()
     end
 end
 
+function extract_rfs_subtraces(trace::Gen.Trace)
+    t, _... = get_args(trace)
+    # StaticIR names and nodes
+    ir = Gen.get_ir(myseqgm)
+    ir2 = Gen.get_ir(mygm)
+    unfold_node = ir.call_nodes[1] # (:t,)
+    unfold_fn = Gen.get_subtrace_fieldname(unfold_node)
+    xs_node = ir2.call_nodes[2] # (:es, :xs)
+    xs_fn = Gen.get_subtrace_fieldname(xs_node)
+    # subtrace for each time step
+    vector_trace = getproperty(trace, unfold_fn)
+    result = Vector{GenRFS.RFSTrace{Float64}}(undef, t)
+    for (idx, strace) in enumerate(vector_trace.subtraces)
+        result[idx] = getproperty(strace, xs_fn)
+    end
+    return result
+end
+
 function test_gm()
     println("test gm")
     # trace, _ = Gen.generate(Gen.Map(prior), (collect(1:3),))
@@ -118,13 +136,13 @@ function test_gm()
     # @profilehtml _test_gm()
 
     println("Generate")
-    bm = @benchmark (Gen.generate($myseqgm, (1,3)))
-    display(bm)
-    trace, w = Gen.generate(myseqgm, (1,3))
-    # choices = get_choices(trace)
+    # bm = @benchmark (Gen.generate($myseqgm, (1,3)))
+    # display(bm)
+    trace, w = Gen.generate(myseqgm, (2,3))
+    choices = get_choices(trace)
     # @show w
     # display(choices)
-    args = (2, 3)
+    args = (3, 3)
     argdiffs = (UnknownChange(), NoChange())
     # bm = @benchmark (Gen.update($trace, $args, $argdiffs,
     #                             choicemap((:t => 2 => :xs => 1, 0.),
@@ -132,14 +150,18 @@ function test_gm()
     # display(bm)
     (new_trace, wdiff, retdiff, discard) =
         Gen.update(trace, args, argdiffs,
-                   choicemap((:t => 2 => :xs => 1, 0.),
-                             (:t => 2 => :xs => 2, 0.)))
+                   choicemap((:t => 3 => :xs => 1, 0.),
+                             (:t => 3 => :xs => 2, 0.)))
+
     # @time (new_trace, wdiff, retdiff) =
     #     Gen.regenerate(trace, select(:es => 1 => :mu))
-    display(get_choices(new_trace))
+    # display(get_choices(new_trace))
     @show wdiff
     @show retdiff
     display(discard)
+
+    bm = @benchmark (extract_rfs_subtraces($trace))
+    display(bm)
     return nothing
 end
 
