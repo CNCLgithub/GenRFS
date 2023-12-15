@@ -82,6 +82,9 @@ end
 Returns a vector where each element is indexed in the partition table.
 
 """
+function associations(::RFS{T}, es::RFSElements{T}, xs::AbstractVector{T}) where {T}
+    associations(es, xs)
+end
 function associations(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     s_table = rfs_table(es, xs, support)
     c_table = rfs_table(es, collect(0:length(xs)), cardinality)

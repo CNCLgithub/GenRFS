@@ -18,7 +18,7 @@ end
 @inline Gen.project(trace::RFSTrace, ::EmptySelection) = trace.score
 
 struct RFGM{T} <: GenerativeFunction{PersistentVector{T}, RFSTrace{T}}
-    estimator::RFS{T}
+    estimator::AbstractRFS{T}
     estimator_args::Tuple
 end
 
@@ -45,13 +45,13 @@ function Gen.propose(gen_fn::RFGM{T}, args::Tuple) where {T}
 end
 
 function RFSTrace(gen_fn::RFGM{T}, es, xs) where {T}
-    pls, ptensor = associations(es, xs, gen_fn.estimator_args...)
+    pls, ptensor = associations(gen_fn.estimator, es, xs,
+                                gen_fn.estimator_args...)
     weight = logsumexp(pls)
     nx = length(xs)
     choices = choicemap()
     @inbounds for i = 1:nx
         choices[i] = xs[i]
-        # set_submap!(choices, i, xs[i])
     end
     RFSTrace{T}(gen_fn, (es, ), choices, PersistentVector{T}(xs), weight, ptensor, pls)
 end
@@ -73,8 +73,8 @@ function Gen.generate(gen_fn::RFGM{T}, args::Tuple, choices::ChoiceMap) where {T
     nx = length(xs)
     @assert contains(es, nx) "subset too small or too large for RFS"
     trace = RFSTrace(gen_fn, es, xs)
-    println("Calling generate with constraints")
-    display(trace.choices)
+    # println("Calling generate with constraints")
+    # display(trace.choices)
     (trace, trace.score)
 end
 
@@ -95,10 +95,11 @@ end
 
 function RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls, to_revise)
 
-    prev_ctable = rfs_table(prev_es, collect(0:length(xs)), cardinality)
+    cs = collect(0:length(xs))
+    prev_ctable = rfs_table(prev_es, cs, cardinality)
     prev_atable = rfs_table(prev_es, xs, support)
 
-    new_ctable = rfs_table(new_es, collect(0:length(xs)), cardinality)
+    new_ctable = rfs_table(new_es, cs, cardinality)
     new_atable = rfs_table(new_es, xs, support)
     new_pls = Vector{Float64}(undef, length(prev_pls))
 
@@ -114,15 +115,17 @@ function process_retained!(gen_fn::RFGM{T}, args, argdiffs,
     @inbounds for j = 1:np
         weight = state.prev_pls[j]
         for (ei, e) = enumerate(state.to_revise)
-            c = 0
+            c = 1 # number of assigned xs; c=1 denotes card-0
             for xi = 1:nx
                 state.ptensor[xi, e, j] || continue
-                weight += (state.new_atable[xi, ei] -
-                                state.prev_atable[xi, ei])
+                delta_assoc = (state.new_atable[ei, xi] -
+                                state.prev_atable[ei, xi])
+                weight += delta_assoc
                 c += 1
             end
-            weight += (state.new_ctable[c, ei] -
-                       state.prev_ctable[c, ei])
+            delta_card = (state.new_ctable[ei, c] -
+                       state.prev_ctable[ei, c])
+            weight += delta_card
         end
         state.new_pls[j] = weight
     end
@@ -218,9 +221,11 @@ function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
     ediffs = argdiffs[1]
     @assert ediffs.new_length == ediffs.prev_length "changed number of elements not currentl supported"
 
+    nret = length(get_retval(trace))
+    retdiff = (NoChange() for _ = 1:nret)
     if isempty(ediffs.updated)
         # TODO: return no change
-        return trace
+        return (trace, 0.0, retdiff)
     end
 
     to_revise = collect(Int64, keys(ediffs.updated))
@@ -235,8 +240,6 @@ function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
                             state.ptensor, state.new_pls)
 
     weight = new_trace.score - trace.score
-    retdiff = NoChange()
-    discard = choicemap()
 
     return (new_trace, weight, retdiff)
 end
