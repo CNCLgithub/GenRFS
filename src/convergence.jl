@@ -9,8 +9,8 @@ function convergence(xs::Vector{T}, es::RFSElements{T},
     @time full_ls, full_pt = associations(es, xs)
 
     println("Time to execute markov rfs")
-    display(@benchmark massociations($es, $xs, $steps, $t))
-    m_ls, m_pt = massociations(es, xs, steps, t)
+    display(@benchmark associations($es, $xs, $steps, $t))
+    m_ls, m_pt = associations(es, xs, steps, t)
 
     @show logsumexp(m_ls)
     @show logsumexp(full_ls)
