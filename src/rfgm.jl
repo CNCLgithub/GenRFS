@@ -212,21 +212,40 @@ end
 function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
         argdiffs::Tuple{<:Gen.VectorDiff}, selection::EmptySelection) where {T}
 
+    new_es = args[1]
+    ediffs = argdiffs[1]
+    xs = get_retval(trace)
+    nret = length(xs)
+    retdiff = (nochange() for _ = 1:nret)
+    if isempty(ediffs.updated)
+        # TODO: return no change
+        return (trace, 0.0, retdiff)
+    end
+
+    if ediffs.new_length == ediffs.prev_length
+        # some new elements, but can keep the ptensor
+        return process_elem_swap(trace, args, argdiffs)
+    end
+
+    # For now, just restart from scract
+    new_trace = RFSTrace(trace.gen_fn, new_es, xs)
+    weight = new_trace.score - trace.score
+    (new_trace, weight, retdiff)
+end
+
+function process_elem_swap(trace::GenRFS.RFSTrace{T}, args::Tuple,
+                           argdiffs::Tuple{<:Gen.VectorDiff}) where {T}
+
     gen_fn = get_gen_fn(trace)
     prev_es = get_args(trace)[1]
     ptensor = trace.ptensor
     prev_pls = trace.pscores
     xs = trace.retval
-    new_es = args[1]
-    ediffs = argdiffs[1]
-    @assert ediffs.new_length == ediffs.prev_length "changed number of elements not currentl supported"
+    nret = length(xs)
+    retdiff = (nochange() for _ = 1:nret)
 
-    nret = length(get_retval(trace))
-    retdiff = (NoChange() for _ = 1:nret)
-    if isempty(ediffs.updated)
-        # TODO: return no change
-        return (trace, 0.0, retdiff)
-    end
+    ediffs = first(argdiffs)
+    new_es = args[1]
 
     to_revise = collect(Int64, keys(ediffs.updated))
 
