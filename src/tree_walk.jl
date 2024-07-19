@@ -4,7 +4,7 @@ using DataStructures
 
 
 function support_table(es::RFSElements{T},
-                       xs::Vector{T})::Matrix{Float64} where {T}
+                       xs::AbstractVector{T})::Matrix{Float64} where {T}
     nx = length(xs)
     ne = length(es)
     table = Matrix{Float64}(undef, ne, nx)
@@ -14,7 +14,7 @@ function support_table(es::RFSElements{T},
     table
 end
 function cardinality_table(es::RFSElements{T},
-                       xs::Vector{T})::Matrix{Float64} where {T}
+                           xs::AbstractVector{T})::Matrix{Float64} where {T}
     nx = length(xs)
     ne = length(es)
     table = Matrix{Float64}(undef, ne, nx + 1)
@@ -156,7 +156,7 @@ mutable struct RTWState
     partition_map::Dict{BitMatrix, Float64}
 end
 
-function RTWState(es::RFSElements{T}, xs::Vector{T}) where {T}
+function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     ml = support_table(es, xs)
     mc = cardinality_table(es, xs)
     us = Int64.(clamp.(upper.(es), 0, length(xs)))

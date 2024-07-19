@@ -31,7 +31,7 @@ end
 Returns a vector where each element is indexed in the partition table.
 
 """
-function associations(::MRFS{T}, es::RFSElements{T}, xs::Vector{T},
+function associations(::MRFS{T}, es::RFSElements{T}, xs::AbstractVector{T},
                        steps::Int64, t::Float64) where {T}
     state = RTWState(es, xs)
     if !isempty(xs)
