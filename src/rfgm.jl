@@ -152,8 +152,8 @@ function compare_rfes(a, b)
     end
 end
 
-function Gen.update(trace::RFSTrace{T}, args::Tuple{<:Gen.UnknownChange},
-        argdiffs::Tuple, cm::ChoiceMap) where {T}
+function Gen.update(trace::RFSTrace{T}, args::Tuple,
+        argdiffs::Tuple{<:Gen.UnknownChange}, cm::ChoiceMap) where {T}
     prev_args = get_args(trace)
     vdiff = compare_rfes(prev_args[1], args[1])
     Gen.update(trace, args, (vdiff,), cm)
@@ -179,28 +179,34 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.Vecto
     xs = trace.retval
     new_es = args[1]
     ediffs = argdiffs[1]
-    @assert ediffs.new_length == ediffs.prev_length "changed number of elements not currentl supported"
 
     if isempty(ediffs.updated)
         # TODO: return no change
         return trace
     end
 
-    to_revise = collect(Int64, keys(ediffs.updated))
+    if ediffs.new_length == ediffs.prev_length
+        to_revise = collect(Int64, keys(ediffs.updated))
 
-    new_es = new_es[to_revise]
-    prev_es = prev_es[to_revise]
-    state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
-                          to_revise)
-    process_retained!(get_gen_fn(trace), args, argdiffs, state)
-    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
-                            xs, logsumexp(state.new_pls),
-                            state.ptensor, state.new_pls)
+        new_es = new_es[to_revise]
+        prev_es = prev_es[to_revise]
+        state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
+                            to_revise)
+        process_retained!(get_gen_fn(trace), args, argdiffs, state)
+        new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
+                                xs, logsumexp(state.new_pls),
+                                state.ptensor, state.new_pls)
 
+        weight = new_trace.score - trace.score
+        retdiff = NoChange()
+        discard = choicemap()
+        return (new_trace, weight, retdiff, discard)
+    end
+
+    # For now, just restart from scract
+    new_trace = RFSTrace(trace.gen_fn, new_es, xs)
     weight = new_trace.score - trace.score
-    retdiff = NoChange()
-    discard = choicemap()
-    return (new_trace, weight, retdiff, discard)
+    (new_trace, weight, NoChange(), choicemap())
 end
 
 function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
