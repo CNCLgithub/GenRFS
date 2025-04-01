@@ -140,16 +140,24 @@ function compare_rfes(a, b)
     prev_length = length(a)
     new_length = length(b)
     diffs = Dict{Int64, Gen.Diff}()
-    for (ei, ea) = enumerate(a)
-        if !in(ea, b)
-            diffs[ei] = UnknownChange()
+
+    if prev_length == new_length
+        for (ei, ea) = enumerate(a)
+            if !in(ea, b)
+                diffs[ei] = UnknownChange()
+            end
         end
-    end
-    if isempty(diffs)
-        return NoChange()
+        if !isempty(diffs)
+            return Gen.VectorDiff(prev_length, new_length, diffs)
+        end
+
     else
-        return Gen.VectorDiff(prev_length, new_length, diffs)
+        added = Set{RandomFiniteElement}(setdiff(b, a))
+        deleted = Set{RandomFiniteElement}(setdiff(a, b))
+        return SetDiff{RandomFiniteElement}(added, deleted)
     end
+
+    return NoChange()
 end
 
 function Gen.update(trace::RFSTrace{T}, args::Tuple,
@@ -170,6 +178,26 @@ end
 #     (trace, trace.score)
 # end
 
+function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:D},
+                    ::EmptyChoiceMap) where {T, D<:Gen.NoChange}
+    (trace, 0.0, NoChange(), choicemap())
+end
+
+# REVIEW: should the ret-diff be `NoChange`?
+function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.SetDiff},
+                    ::EmptyChoiceMap) where {T}
+    gen_fn = get_gen_fn(trace)
+    prev_es = get_args(trace)[1]
+    ptensor = trace.ptensor
+    xs = trace.retval
+    new_es = args[1]
+
+    # For now, just restart from scratch
+    new_trace = RFSTrace(trace.gen_fn, new_es, xs)
+    weight = new_trace.score - trace.score
+    (new_trace, weight, NoChange(), choicemap())
+end
+
 function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.VectorDiff},
                     ::EmptyChoiceMap) where {T}
     gen_fn = get_gen_fn(trace)
@@ -180,33 +208,22 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.Vecto
     new_es = args[1]
     ediffs = argdiffs[1]
 
-    if isempty(ediffs.updated)
-        # TODO: return no change
-        return trace
-    end
+    @assert ediffs.new_length == ediffs.prev_length
+    to_revise = collect(Int64, keys(ediffs.updated))
 
-    if ediffs.new_length == ediffs.prev_length
-        to_revise = collect(Int64, keys(ediffs.updated))
+    new_es = new_es[to_revise]
+    prev_es = prev_es[to_revise]
+    state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
+                        to_revise)
+    process_retained!(get_gen_fn(trace), args, argdiffs, state)
+    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
+                            xs, logsumexp(state.new_pls),
+                            state.ptensor, state.new_pls)
 
-        new_es = new_es[to_revise]
-        prev_es = prev_es[to_revise]
-        state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
-                            to_revise)
-        process_retained!(get_gen_fn(trace), args, argdiffs, state)
-        new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
-                                xs, logsumexp(state.new_pls),
-                                state.ptensor, state.new_pls)
-
-        weight = new_trace.score - trace.score
-        retdiff = NoChange()
-        discard = choicemap()
-        return (new_trace, weight, retdiff, discard)
-    end
-
-    # For now, just restart from scract
-    new_trace = RFSTrace(trace.gen_fn, new_es, xs)
     weight = new_trace.score - trace.score
-    (new_trace, weight, NoChange(), choicemap())
+    retdiff = NoChange()
+    discard = choicemap()
+    return (new_trace, weight, retdiff, discard)
 end
 
 function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
@@ -215,6 +232,28 @@ function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
     vdiff = compare_rfes(prev_args[1], args[1])
     Gen.regenerate(trace, args, (vdiff,), selection)
 end
+
+# REVIEW: What about the other selections?
+function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
+        argdiffs::Tuple{NoChange}, selection::EmptySelection) where {T}
+    return (trace, 0.0, NoChange())
+end
+
+function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
+        argdiffs::Tuple{<:Gen.SetDiff}, selection::EmptySelection) where {T}
+
+    new_es = args[1]
+    ediffs = argdiffs[1]
+    xs = get_retval(trace)
+    nret = length(xs)
+    retdiff = (nochange() for _ = 1:nret)
+
+    # For now, just restart from scratch
+    new_trace = RFSTrace(trace.gen_fn, new_es, xs)
+    weight = new_trace.score - trace.score
+    (new_trace, weight, retdiff)
+end
+
 function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
         argdiffs::Tuple{<:Gen.VectorDiff}, selection::EmptySelection) where {T}
 
@@ -223,20 +262,11 @@ function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
     xs = get_retval(trace)
     nret = length(xs)
     retdiff = (nochange() for _ = 1:nret)
-    if isempty(ediffs.updated)
-        # TODO: return no change
-        return (trace, 0.0, retdiff)
-    end
 
-    if ediffs.new_length == ediffs.prev_length
-        # some new elements, but can keep the ptensor
-        return process_elem_swap(trace, args, argdiffs)
-    end
 
-    # For now, just restart from scract
-    new_trace = RFSTrace(trace.gen_fn, new_es, xs)
-    weight = new_trace.score - trace.score
-    (new_trace, weight, retdiff)
+    @assert ediffs.new_length == ediffs.prev_length
+    # some new elements, but can keep the ptensor
+    return process_elem_swap(trace, args, argdiffs)
 end
 
 function process_elem_swap(trace::GenRFS.RFSTrace{T}, args::Tuple,
@@ -267,4 +297,8 @@ function process_elem_swap(trace::GenRFS.RFSTrace{T}, args::Tuple,
     weight = new_trace.score - trace.score
 
     return (new_trace, weight, retdiff)
+end
+
+function Gen.project(trace::GenRFS.RFSTrace, selection::AllSelection)
+    trace.score
 end
