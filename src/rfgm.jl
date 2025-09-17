@@ -71,7 +71,7 @@ function Gen.generate(gen_fn::RFGM{T}, args::Tuple, choices::ChoiceMap) where {T
     es = args[1]
     xs = to_array(choices, T)
     nx = length(xs)
-    @assert contains(es, nx) "subset too small or too large for RFS"
+    @assert contains(es, nx) "RFS not contained: ES=$(length(es)), XS=$(nx)"
     trace = RFSTrace(gen_fn, es, xs)
     # println("Calling generate with constraints")
     # display(trace.choices)
