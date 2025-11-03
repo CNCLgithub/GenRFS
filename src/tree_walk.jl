@@ -268,7 +268,7 @@ end
 
 
 
-function random_tree_step!(st::RTWState;
+function random_tree_step!(st::RTWState,
                            t::Float64 = 1.0)::Nothing
 
     mx_kins = maximum(st.k_ins)

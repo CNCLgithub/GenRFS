@@ -36,7 +36,7 @@ function associations(::MRFS{T}, es::RFSElements{T}, xs::AbstractVector{T},
     state = RTWState(es, xs)
     if !isempty(xs)
         for _ = 1:steps
-            random_tree_step!(state; t = t)
+            random_tree_step!(state, t)
         end
     end
     n = length(state.partition_map)
