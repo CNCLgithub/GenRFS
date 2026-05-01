@@ -241,14 +241,29 @@ end
 function softmax!(out::Array{Float64}, x::Array{Float64}; t::Float64 = 1.0)
     isempty(x) && return x
     nx = length(x)
-    maxx = maximum(x)
-    sxs = 0.0
 
+    # Single item
+    if nx === 1
+        out[1] = 1.0
+        return nothing
+    end
+
+    maxx = maximum(x)
+
+    # Singular mass
+    if maxx == Inf
+        fill!(out, 0.0)
+        out[argmax(x)] = 1.0
+        return nothing
+    end
+        
+    # Uniform
     if maxx == -Inf
         out[:] .= 1.0 / nx
         return nothing
     end
 
+    sxs = 0.0
     @inbounds for i = 1:nx
         v = @fastmath exp((x[i] - maxx) / t)
         sxs += v
@@ -287,6 +302,11 @@ function random_tree_step!(st::RTWState;
         pswap = -Inf
     else
         softmax!(st.nk_swp, st.k_swp, t = t)
+        if isnan(st.nk_swp[1])
+            println("Swap kernel singular with NaN")
+            @show st.nk_swp
+            @show st.k_swp
+        end
         swpi = categorical(st.nk_swp)
         pswap = st.k_swp[swpi]
     end
