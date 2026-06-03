@@ -232,47 +232,6 @@ function greedy_tree_step!(st::RTWState)::Nothing
 end
 
 
-function softmax(x::Array{Float64}; t::Float64 = 1.0)
-    out = similar(x)
-    softmax!(out, x; t = t)
-    return out
-end
-
-function softmax!(out::Array{Float64}, x::Array{Float64}; t::Float64 = 1.0)
-    isempty(x) && return x
-    nx = length(x)
-
-    # Single item
-    if nx === 1
-        out[1] = 1.0
-        return nothing
-    end
-
-    maxx = maximum(x)
-
-    # Singular mass
-    if maxx == Inf
-        fill!(out, 0.0)
-        out[argmax(x)] = 1.0
-        return nothing
-    end
-        
-    # Uniform
-    if maxx == -Inf
-        out[:] .= 1.0 / nx
-        return nothing
-    end
-
-    sxs = 0.0
-    @inbounds for i = 1:nx
-        v = @fastmath exp((x[i] - maxx) / t)
-        sxs += v
-        out[i] = v
-    end
-    rmul!(out, 1.0 / sxs)
-    return nothing
-end
-
 # adapted from
 # https://stackoverflow.com/a/68581180
 function upper_t_to_matrix(k::Int64, n::Int64)
@@ -280,8 +239,6 @@ function upper_t_to_matrix(k::Int64, n::Int64)
     j = k + i + ( (n-i+1)*(n-i) - n*(n-1) )÷2
     return i, j
 end
-
-
 
 function random_tree_step!(st::RTWState;
                            t::Float64 = 1.0)::Nothing
@@ -291,8 +248,8 @@ function random_tree_step!(st::RTWState;
         insi = 0
         pins = -Inf
     else
-        softmax!(st.nk_ins, st.k_ins, t = t)
-        insi = categorical(vec(st.nk_ins))
+        softmax!(st.nk_ins, st.k_ins, t)
+        insi = unsafe_categorical(st.nk_ins)
         pins = st.k_ins[insi]
     end
 
@@ -301,13 +258,8 @@ function random_tree_step!(st::RTWState;
         swpi = 0
         pswap = -Inf
     else
-        softmax!(st.nk_swp, st.k_swp, t = t)
-        if isnan(st.nk_swp[1])
-            println("Swap kernel singular with NaN")
-            @show st.nk_swp
-            @show st.k_swp
-        end
-        swpi = categorical(st.nk_swp)
+        softmax!(st.nk_swp, st.k_swp, t)
+        swpi = unsafe_categorical(st.nk_swp)
         pswap = st.k_swp[swpi]
     end
 

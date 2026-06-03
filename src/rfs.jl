@@ -15,11 +15,7 @@ function Gen.logpdf(::RFS{T},
                     xs::AbstractVector{T},
                     elements::RFSElements{T}) where {T}
     !contains(elements, length(xs)) && return -Inf
-    @> elements begin
-        associations(xs)
-        first
-        logsumexp
-    end
+    logsumexp(first(associations(xs)))
 end
 Gen.has_output_grad(::RFS) = false
 Gen.logpdf_grad(::RFS, value::Vector, args...) = (nothing,)

@@ -8,11 +8,7 @@ function Gen.logpdf(r::MRFS{T},
                     steps::Int,
                     temp::Float64) where {T}
     !contains(elements, length(xs)) && return -Inf
-    @> elements begin
-        associations(xs, steps, temp)
-        first
-        logsumexp
-    end
+    logsumexp(first(associations(xs, steps, temp)))
 end
 Gen.has_output_grad(::MRFS) = false
 Gen.logpdf_grad(::MRFS, value::Vector, args...) = (nothing,)
