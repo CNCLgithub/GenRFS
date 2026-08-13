@@ -36,7 +36,6 @@ include("rfs.jl")
 # markov search
 include("tree_walk.jl")
 include("mrfs.jl")
-include("convergence.jl")
 include("rfgm.jl")
 
 end # module

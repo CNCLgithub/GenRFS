@@ -1,4 +1,4 @@
-export RFGM
+export RFGM, RFSTrace
 
 struct RFSTrace{T} <: Gen.Trace
     gen_fn::GenerativeFunction

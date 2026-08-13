@@ -144,7 +144,7 @@ end
 
 struct RandomTreeWalk end
 
-mutable struct RTWState
+mutable struct RTWState{K}
     ml::Matrix{Float64}
     mc::Matrix{Float64}
     partition::BitMatrix
@@ -153,8 +153,20 @@ mutable struct RTWState
     k_ins::Matrix{Float64}
     nk_swp::Vector{Float64}
     nk_ins::Matrix{Float64}
-    partition_map::Dict{BitMatrix, Float64}
+    partition_map::Dict{K, Float64}
 end
+
+"""
+    bitmatrix_to_ntuple(pmat::BitMatrix)::NTuple
+
+Converts an (N × ne) BitMatrix into a stack-allocated NTuple{N, UInt16} key.
+"""
+@inline function partition_to_tuple(partition::BitMatrix)::NTuple
+    nx = size(partition, 1)
+    # Returns NTuple{nx, UInt16}
+    ntuple(x -> UInt16(findfirst(view(partition, x, :))), nx)
+end
+
 
 function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     ml = support_table(es, xs)
@@ -171,8 +183,9 @@ function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     nk_ins = Matrix{Float64}(undef, size(k_ins))
     # add entries to queues
     # dereference initial partition
-    pm = Dict{BitMatrix, Float64}(BitMatrix(pstart) => ls)
-    RTWState(ml, mc, pstart, ls, k_swp, k_ins, nk_swp, nk_ins, pm)
+    K = NTuple{length(xs), UInt16}
+    pm = Dict{K, Float64}(partition_to_tuple(pstart) => ls)
+    RTWState{K}(ml, mc, pstart, ls, k_swp, k_ins, nk_swp, nk_ins, pm)
 end
 
 function hash_pmat(pmat::BitArray)
@@ -203,15 +216,13 @@ function update_from_move!(st::RTWState, w::Float64)
     # update kernels
     swap_kernel!(st.k_swp, st.partition, st.ml)
     ins_kernel!(st.k_ins, st.partition, st.ml, st.mc)
+    idx = partition_to_tuple(st.partition)
     # current partition already visited
-    haskey(st.partition_map, st.partition) && return nothing
-    # dereference new key
-    pt = BitMatrix(st.partition)
+    haskey(st.partition_map, idx) && return nothing
     # increment score
     pscore = st.pscore + w
-    st.partition_map[pt] = pscore
+    st.partition_map[idx] = pscore
     st.pscore = pscore
-    # st.partition_map[pt] = partition_score(pt, st.ml, st.mc)
     return nothing
 end
 
