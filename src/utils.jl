@@ -56,3 +56,16 @@ function softmax!(out::Array{Float64}, x::Array{Float64}, t::Float64 = 1.0)
     rmul!(out, 1.0 / sxs)
     return nothing
 end
+
+function unsafe_find_true(subarray)
+    findfirst(subarray)
+    # n = length(subarray)
+    # x = 0
+    # @inbounds for i = 1:n
+    #     if subarray[i]
+    #         x = i
+    #         break
+    #     end
+    # end
+    # return x
+end

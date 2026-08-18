@@ -52,17 +52,33 @@ function ins_kernel(partition::BitMatrix, l_table::Matrix{Float64}, c_table::Mat
     ins_kernel!(k_ins, partition, l_table, c_table)
     return k_ins
 end
+
+function count_assocs(partition::BitMatrix, pad::Int64 = 1)
+    nx,ne = size(partition)
+    counts = fill(pad, ne)
+    @inbounds for x = 1:nx
+        for e = 1:ne
+            if partition[x, e]
+                counts[e] += 1
+                break
+            end
+        end
+    end
+    return counts
+end
+
 function ins_kernel!(k_ins::Matrix{Float64},
                     partition::BitMatrix,
                     l_table::Matrix{Float64},
                     c_table::Matrix{Float64})::Nothing
     (ne, nx) = size(l_table)
     # number of assignments per element
-    ecs = count.(eachcol(partition)) .+ 1
+    # ecs = count.(eachcol(partition)) .+ 1
+    ecs = count_assocs(partition)
     # partition = Matrix{Bool}(partition')
     @inbounds @views for x = 1:nx
         # currently assigned element
-        ei = findfirst(partition[x, :])
+        ei = unsafe_find_true(partition[x, :])
         pxei = l_table[ei, x]
         pci = c_table[ei, ecs[ei]]
         for ej = 1:ne
@@ -102,12 +118,12 @@ function swap_kernel!(k_swap::Vector{Float64},
     @inbounds @views for a = 1:(nx - 1)
         # currently assigned element
         # ei = findfirst(partition[:, a])
-        ei = findfirst(partition[a, :])
+        ei = unsafe_find_true(partition[a, :])
         laei = l_table[ei, a]
         for b = (a+1):nx
             i += 1
             # ej = findfirst(view(partition, :, b))
-            ej = findfirst(partition[b, :])
+            ej = unsafe_find_true(partition[b, :])
             if ei == ej
                 # can't swap when assigned to same element
                 k_swap[i] = -Inf
@@ -164,7 +180,7 @@ Converts an (N × ne) BitMatrix into a stack-allocated NTuple{N, UInt16} key.
 @inline function partition_to_tuple(partition::BitMatrix)::NTuple
     nx = size(partition, 1)
     # Returns NTuple{nx, UInt16}
-    ntuple(x -> UInt16(findfirst(view(partition, x, :))), nx)
+    ntuple(x -> UInt16(unsafe_find_true(view(partition, x, :))), nx)
 end
 
 
@@ -196,8 +212,8 @@ end
 function swap_move!(st::RTWState, a::Int, b::Int)::Nothing
     # p = Matrix{Bool}(st.partition)
     p = st.partition
-    be = findfirst(view(p, b, :))
-    ae = findfirst(view(p, a, :))
+    be = unsafe_find_true(view(p, b, :))
+    ae = unsafe_find_true(view(p, a, :))
     st.partition[b, be] = false
     st.partition[b, ae] = true
     st.partition[a, ae] = false
@@ -206,7 +222,7 @@ function swap_move!(st::RTWState, a::Int, b::Int)::Nothing
 end
 
 function insert_move!(st::RTWState, x::Int, e::Int)::Nothing
-    xe = findfirst(view(st.partition, x, :))
+    xe = unsafe_find_true(view(st.partition, x, :))
     st.partition[x, xe] = false
     st.partition[x, e] = true
     return nothing
