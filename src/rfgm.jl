@@ -1,4 +1,4 @@
-export RFGM
+export RFGM, RFSTrace
 
 struct RFSTrace{T} <: Gen.Trace
     gen_fn::GenerativeFunction
@@ -71,10 +71,10 @@ function Gen.generate(gen_fn::RFGM{T}, args::Tuple, choices::ChoiceMap) where {T
     es = args[1]
     xs = to_array(choices, T)
     nx = length(xs)
-    @assert contains(es, nx) "RFS not contained: ES=$(length(es)), XS=$(nx)"
+    if !contains(es, nx)
+        error("Could not explain observed set $(xs) with elements $(es)")
+    end
     trace = RFSTrace(gen_fn, es, xs)
-    # println("Calling generate with constraints")
-    # display(trace.choices)
     (trace, trace.score)
 end
 

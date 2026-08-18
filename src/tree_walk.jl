@@ -52,17 +52,33 @@ function ins_kernel(partition::BitMatrix, l_table::Matrix{Float64}, c_table::Mat
     ins_kernel!(k_ins, partition, l_table, c_table)
     return k_ins
 end
+
+function count_assocs(partition::BitMatrix, pad::Int64 = 1)
+    nx,ne = size(partition)
+    counts = fill(pad, ne)
+    @inbounds for x = 1:nx
+        for e = 1:ne
+            if partition[x, e]
+                counts[e] += 1
+                break
+            end
+        end
+    end
+    return counts
+end
+
 function ins_kernel!(k_ins::Matrix{Float64},
                     partition::BitMatrix,
                     l_table::Matrix{Float64},
                     c_table::Matrix{Float64})::Nothing
     (ne, nx) = size(l_table)
     # number of assignments per element
-    ecs = count.(eachcol(partition)) .+ 1
+    # ecs = count.(eachcol(partition)) .+ 1
+    ecs = count_assocs(partition)
     # partition = Matrix{Bool}(partition')
     @inbounds @views for x = 1:nx
         # currently assigned element
-        ei = findfirst(partition[x, :])
+        ei = unsafe_find_true(partition[x, :])
         pxei = l_table[ei, x]
         pci = c_table[ei, ecs[ei]]
         for ej = 1:ne
@@ -102,12 +118,12 @@ function swap_kernel!(k_swap::Vector{Float64},
     @inbounds @views for a = 1:(nx - 1)
         # currently assigned element
         # ei = findfirst(partition[:, a])
-        ei = findfirst(partition[a, :])
+        ei = unsafe_find_true(partition[a, :])
         laei = l_table[ei, a]
         for b = (a+1):nx
             i += 1
             # ej = findfirst(view(partition, :, b))
-            ej = findfirst(partition[b, :])
+            ej = unsafe_find_true(partition[b, :])
             if ei == ej
                 # can't swap when assigned to same element
                 k_swap[i] = -Inf
@@ -144,7 +160,7 @@ end
 
 struct RandomTreeWalk end
 
-mutable struct RTWState
+mutable struct RTWState{K}
     ml::Matrix{Float64}
     mc::Matrix{Float64}
     partition::BitMatrix
@@ -153,8 +169,20 @@ mutable struct RTWState
     k_ins::Matrix{Float64}
     nk_swp::Vector{Float64}
     nk_ins::Matrix{Float64}
-    partition_map::Dict{BitMatrix, Float64}
+    partition_map::Dict{K, Float64}
 end
+
+"""
+    bitmatrix_to_ntuple(pmat::BitMatrix)::NTuple
+
+Converts an (N × ne) BitMatrix into a stack-allocated NTuple{N, UInt16} key.
+"""
+@inline function partition_to_tuple(partition::BitMatrix)::NTuple
+    nx = size(partition, 1)
+    # Returns NTuple{nx, UInt16}
+    ntuple(x -> UInt16(unsafe_find_true(view(partition, x, :))), nx)
+end
+
 
 function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     ml = support_table(es, xs)
@@ -171,8 +199,9 @@ function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     nk_ins = Matrix{Float64}(undef, size(k_ins))
     # add entries to queues
     # dereference initial partition
-    pm = Dict{BitMatrix, Float64}(BitMatrix(pstart) => ls)
-    RTWState(ml, mc, pstart, ls, k_swp, k_ins, nk_swp, nk_ins, pm)
+    K = NTuple{length(xs), UInt16}
+    pm = Dict{K, Float64}(partition_to_tuple(pstart) => ls)
+    RTWState{K}(ml, mc, pstart, ls, k_swp, k_ins, nk_swp, nk_ins, pm)
 end
 
 function hash_pmat(pmat::BitArray)
@@ -183,8 +212,8 @@ end
 function swap_move!(st::RTWState, a::Int, b::Int)::Nothing
     # p = Matrix{Bool}(st.partition)
     p = st.partition
-    be = findfirst(view(p, b, :))
-    ae = findfirst(view(p, a, :))
+    be = unsafe_find_true(view(p, b, :))
+    ae = unsafe_find_true(view(p, a, :))
     st.partition[b, be] = false
     st.partition[b, ae] = true
     st.partition[a, ae] = false
@@ -193,7 +222,7 @@ function swap_move!(st::RTWState, a::Int, b::Int)::Nothing
 end
 
 function insert_move!(st::RTWState, x::Int, e::Int)::Nothing
-    xe = findfirst(view(st.partition, x, :))
+    xe = unsafe_find_true(view(st.partition, x, :))
     st.partition[x, xe] = false
     st.partition[x, e] = true
     return nothing
@@ -203,15 +232,13 @@ function update_from_move!(st::RTWState, w::Float64)
     # update kernels
     swap_kernel!(st.k_swp, st.partition, st.ml)
     ins_kernel!(st.k_ins, st.partition, st.ml, st.mc)
+    idx = partition_to_tuple(st.partition)
     # current partition already visited
-    haskey(st.partition_map, st.partition) && return nothing
-    # dereference new key
-    pt = BitMatrix(st.partition)
+    haskey(st.partition_map, idx) && return nothing
     # increment score
     pscore = st.pscore + w
-    st.partition_map[pt] = pscore
+    st.partition_map[idx] = pscore
     st.pscore = pscore
-    # st.partition_map[pt] = partition_score(pt, st.ml, st.mc)
     return nothing
 end
 
@@ -232,32 +259,6 @@ function greedy_tree_step!(st::RTWState)::Nothing
 end
 
 
-function softmax(x::Array{Float64}; t::Float64 = 1.0)
-    out = similar(x)
-    softmax!(out, x; t = t)
-    return out
-end
-
-function softmax!(out::Array{Float64}, x::Array{Float64}; t::Float64 = 1.0)
-    isempty(x) && return x
-    nx = length(x)
-    maxx = maximum(x)
-    sxs = 0.0
-
-    if maxx == -Inf
-        out[:] .= 1.0 / nx
-        return nothing
-    end
-
-    @inbounds for i = 1:nx
-        v = @fastmath exp((x[i] - maxx) / t)
-        sxs += v
-        out[i] = v
-    end
-    rmul!(out, 1.0 / sxs)
-    return nothing
-end
-
 # adapted from
 # https://stackoverflow.com/a/68581180
 function upper_t_to_matrix(k::Int64, n::Int64)
@@ -265,8 +266,6 @@ function upper_t_to_matrix(k::Int64, n::Int64)
     j = k + i + ( (n-i+1)*(n-i) - n*(n-1) )÷2
     return i, j
 end
-
-
 
 function random_tree_step!(st::RTWState,
                            t::Float64 = 1.0)::Nothing
@@ -276,8 +275,8 @@ function random_tree_step!(st::RTWState,
         insi = 0
         pins = -Inf
     else
-        softmax!(st.nk_ins, st.k_ins, t = t)
-        insi = categorical(vec(st.nk_ins))
+        softmax!(st.nk_ins, st.k_ins, t)
+        insi = unsafe_categorical(st.nk_ins)
         pins = st.k_ins[insi]
     end
 
@@ -286,8 +285,8 @@ function random_tree_step!(st::RTWState,
         swpi = 0
         pswap = -Inf
     else
-        softmax!(st.nk_swp, st.k_swp, t = t)
-        swpi = categorical(st.nk_swp)
+        softmax!(st.nk_swp, st.k_swp, t)
+        swpi = unsafe_categorical(st.nk_swp)
         pswap = st.k_swp[swpi]
     end
 

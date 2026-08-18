@@ -5,10 +5,10 @@ module GenRFS
 #################################################################################
 
 using Gen
-using Lazy: @>, @>>
-
 
 export AbstractRFS
+
+include("utils.jl")
 
 #################################################################################
 # Random Finite Element
@@ -36,7 +36,6 @@ include("rfs.jl")
 # markov search
 include("tree_walk.jl")
 include("mrfs.jl")
-include("convergence.jl")
 include("rfgm.jl")
 
 end # module
