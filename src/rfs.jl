@@ -69,15 +69,20 @@ function support_table(es::RFSElements{T},
     end
     table
 end
-function cardinality_table(es::RFSElements{T},
-                           xs::AbstractVector{T})::Matrix{Float64} where {T}
-    nx = length(xs)
+
+function cardinality_table(es::RFSElements,
+                           nx::Int64)::Matrix{Float64}
     ne = length(es)
     table = Matrix{Float64}(undef, ne, nx + 1)
     @inbounds for ei = 1:ne, xi = 0:nx
         table[ei, xi+1] = cardinality(es[ei], xi)
     end
     table
+end
+
+function cardinality_table(es::RFSElements{T},
+                           xs::AbstractVector{T})::Matrix{Float64} where {T}
+    cardinality_table(es, length(xs))
 end
 
 """ Computes the logscore of every correspondence

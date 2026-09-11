@@ -26,6 +26,8 @@ using Gen
     approx_short = Gen.logpdf(mrfs_float64, xs, es, steps_short, temp)
     approx_long  = Gen.logpdf(mrfs_float64, xs, es, steps_long, temp)
 
+
+    @test approx_short > -Inf
     @test approx_long > -Inf
     @test isfinite(approx_long)
     @test abs(approx_long - exact_score) <= abs(approx_short - exact_score) + 1e-3

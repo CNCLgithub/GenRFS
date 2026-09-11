@@ -122,9 +122,9 @@ function max_assignment(l_table::Matrix{Float64},
                         c_table::Matrix{Float64},
                         max_charges::Vector{Int64}
                         )::Tuple{BitMatrix, Vector{Int64}}
-    nx, ne = size(l_table)
+    ne, nx = size(l_table)
     max_ls = vec(maximum(l_table, dims = 1))
-    partition = zeros(Bool, size(l_table'))
+    partition = zeros(Bool, (nx, ne))
     assigned = Vector{Int64}(undef, nx)
     # start with the "closest" assignment
     @inbounds @views for xi = sortperm(max_ls, rev = true)
@@ -295,46 +295,50 @@ end
 "Recompute row x of k_ins. Called when x's element identity changes."
 function refresh_k_ins_row!(st::RTWState, x::Int)::Nothing
     ne = size(st.k_ins, 2)
-    ej = st.assigned[x]                  # x's current (post-move) element
-    c_ej = count_col(st.partition, ej)
+    ej = st.assigned[x]                     # x's current (post-move) element
+    ej_idx = count_idx(st.partition, ej)    # table index for count c_ej
     @inbounds for e = 1:ne
         if e == ej
             st.k_ins[x, e] = 0.0
         else
-            c_e = count_col(st.partition, e)
-            st.k_ins[x, e] = (st.ml[e, x] + st.mc[e, c_e + 1] + st.mc[ej, c_ej - 1])
-                           - (st.ml[ej, x] + st.mc[e, c_e] + st.mc[ej, c_ej])
+            e_idx = count_idx(st.partition, e)
+            st.k_ins[x, e] = (st.ml[e, x] + st.mc[e, e_idx + 1] + st.mc[ej, ej_idx - 1])
+                           - (st.ml[ej, x] + st.mc[ej, ej_idx] + st.mc[e, e_idx])
         end
     end
-    # nk_ins[x]: row normalizer — byproduct, free ingredient for the RB estimator
-    # st.nk_ins[x] = logsumexp(view(st.k_ins, x, :))
     return nothing
 end
 
-"Recompute columns ei and ej of k_ins, plus row x (x just moved ei -> ej)."
+"""
+Recompute k_ins entries stale after insert move x: ei -> ej.
+Members of ei/ej need their full row (their source count changed);
+all other rows need only the ei/ej columns.
+"""
 function refresh_k_ins_cols!(st::RTWState, x::Int, ei::Int, ej::Int)::Nothing
     nx = size(st.k_ins, 1)
-    ci = count_col(st.partition, ei)     # post-move counts
-    cj = count_col(st.partition, ej)
+    ei_idx = count_idx(st.partition, ei)    # post-move table indices
+    ej_idx = count_idx(st.partition, ej)
     @inbounds for x2 = 1:nx
+        x2 == x && continue                 # handled by refresh_k_ins_row! below
         e_x = st.assigned[x2]
-        for e in (ei, ej)
-            if e == e_x
-                st.k_ins[x2, e] = 0.0
-            else
-                c   = (e == ej) ? cj : ci
-                c_x = count_col(st.partition, e_x)
-                st.k_ins[x2, e] = (st.ml[e, x2] + st.mc[e, c + 1] + st.mc[e_x, c_x - 1])
-                                - (st.ml[e_x, x2] + st.mc[e, c] + st.mc[e_x, c_x])
+        if e_x == ei || e_x == ej
+            refresh_k_ins_row!(st, x2)      # source count changed → full row
+        else
+            ex_idx = count_idx(st.partition, e_x)
+            for e in (ei, ej)
+                e_idx = (e == ej) ? ej_idx : ei_idx
+                st.k_ins[x2, e] = (
+                    (st.ml[e, x2] + st.mc[e, e_idx + 1] + st.mc[e_x, ex_idx - 1])
+                    - (st.ml[e_x, x2] + st.mc[e_x, ex_idx] + st.mc[e, e_idx])
+                )
             end
         end
-        # note: the moved detection's own row is handled below, where its full row is stale
     end
-    refresh_k_ins_row!(st, x)            # row x: element identity changed, all ne entries stale
+    refresh_k_ins_row!(st, x)               # row x: element identity changed, all ne entries stale
     return nothing
 end
 
-"Recompute k_swp entries for all pairs involving detection x. O(nx); no mc terms."
+"Recompute k_swp entries for all pairs involving detection x"
 function refresh_k_swp_pairs!(st::RTWState, x::Int)::Nothing
     nx = size(st.partition, 1)
     ex = st.assigned[x]
@@ -360,7 +364,7 @@ function refresh_k_ins_all!(st::RTWState)::Nothing
     nx, ne = size(st.k_ins)
     @inbounds for x = 1:nx
         st.k_ins[x, st.assigned[x]] = 0.0
-        st.nk_ins[x] = logsumexp(view(st.k_ins, x, :))
+        # st.nk_ins[x] = logsumexp(view(st.k_ins, x, :))
     end
     return nothing
 end
@@ -397,6 +401,14 @@ end
 function upper_t_size(n::Int64)
     Int64(n * (n-1) / 2)
 end
+
+"""
+    count_idx(partition, e) = count_col(partition, e) + 1
+
+Table index for the *current* count of element e, per the cardinality_table
+convention mc[e, n+1] = Pr(count = n). Post-move states use count_idx(…) ± 1.
+"""
+@inline count_idx(partition::BitMatrix, e::Int)::Int = count_col(partition, e) + 1
 
 "Number of active entries in column e of the partition matrix."
 function count_col(partition::BitMatrix, e::Int)::Int

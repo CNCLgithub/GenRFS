@@ -75,11 +75,10 @@ function association_score(::MRFS{T},
     # Random walk over partition space
     state = RTWState(es, xs)
     for _ = 1:steps
-        mcmc_tree_step!(st, t)
+        mcmc_tree_step!(state, t)
     end
     # log ∑_s exp(score(s)) over the distinct visited partitions
-    logscore = logsumexp_collection(values(state.visited))
-    logscore
+    logsumexp_collection(values(state.visited))
 end
 
 """

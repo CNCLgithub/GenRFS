@@ -16,6 +16,33 @@ function unsafe_categorical(ws::Array{Float64})
     return x
 end
 
+"""
+Fused in-place categorical sampling from unnormalized weights.
+Mutates `ws` (normalized in place, temperature t applied). No allocation.
+Entries may be 0.0 (self-entry / same-element) or exp(±Inf) = (0.0, Inf) handled via max-subtraction.
+Returns the sampled index in 1:length(ws).
+"""
+function unsafe_categorical!(ws::Vector{Float64}, t::Float64 = 1.0)::Int
+    n = length(ws)
+    # 1. max-subtract (stability under t; deltas can be large)
+    m = -Inf
+    @inbounds for v in ws; v > m && (m = v); end
+    m == -Inf && return 0                # all entries -Inf: no legal move (shouldn't happen; self=0.0 exists)
+    s = 0.0
+    @inbounds for i in 1:n
+        ws[i] = @fastmath exp((ws[i] - m) / t)
+        s += ws[i]
+    end
+    # 2. normalize in place
+    inv_s = 1.0 / s
+    @inbounds for i in 1:n
+        ws[i] *= inv_s
+    end
+    # 3. sample — reuse the existing unsafe_categorical logic
+    return unsafe_categorical(ws)
+end
+
+
 function softmax(x::Array{Float64}, t::Float64 = 1.0)
     out = similar(x)
     softmax!(out, x, t)
