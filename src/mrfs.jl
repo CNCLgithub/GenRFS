@@ -53,7 +53,7 @@ function associations(::MRFS{T}, es::RFSElements{T}, xs::AbstractVector{T},
     # end
     # return ls, BitArray{3}(pt)
     #
-    return state
+    return state.visited
 end
 
 

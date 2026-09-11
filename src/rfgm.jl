@@ -83,54 +83,45 @@ end
 # function Gen.regenerate(gen_fn::RFGM{T}, args::Tuple, selection::Selection) where {T}
 # end
 
-mutable struct RFUpdateState
+mutable struct RFUpdateState{K}
     new_atable::Matrix{Float64}
     new_ctable::Matrix{Float64}
-    new_pls::Vector{Float64}
     prev_atable::Matrix{Float64}
     prev_ctable::Matrix{Float64}
-    prev_pls::Vector{Float64}
-    ptensor::Array{Bool, 3}
+    partitions::Dict{NTuple{K, UInt16}, Float64}
     to_revise::Vector{Int64}
 end
 
-function RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls, to_revise)
-
-    cs = collect(0:length(xs))
-    prev_ctable = rfs_table(prev_es, cs, cardinality)
-    prev_atable = rfs_table(prev_es, xs, support)
-
-    new_ctable = rfs_table(new_es, cs, cardinality)
-    new_atable = rfs_table(new_es, xs, support)
-    new_pls = Vector{Float64}(undef, length(prev_pls))
-
-
-    RFUpdateState(new_atable, new_ctable, new_pls, prev_atable,
-                  prev_ctable, prev_pls, ptensor, to_revise)
+function RFUpdateState(new_es, prev_es, xs,
+                       partitions::Dict{NTuple{K, UInt16}, Float64},
+                       to_revise) where {K}
+    nx = length(xs)
+    prev_ctable = cardinality_table(prev_es, nx)
+    prev_atable = support_table(prev_es, xs)
+    new_ctable = cardinality_table(new_es, nx)
+    new_atable = support_table(new_es, xs)
+    RFUpdateState(new_atable, new_ctable, prev_atable, prev_ctable,
+                  partitions, to_revise)
 end
 
-function process_retained!(gen_fn::RFGM{T}, args, argdiffs,
-        state::RFUpdateState) where {T}
-
-    nx, _, np = size(state.ptensor)
-    @inbounds for j = 1:np
-        weight = state.prev_pls[j]
-        for (ei, e) = enumerate(state.to_revise)
-            c = 1 # number of assigned xs; c=1 denotes card-0
+function process_retained!(state::RFUpdateState{K}) where {K}
+    nx = first(size(state.new_atable))       # ne × nx
+    to_revise = state.to_revise
+    @inbounds for key in collect(keys(state.partitions))   # collect before mutating
+        weight = state.partitions[key]
+        for ei in to_revise
+            c = 1                            # c = 1 denotes card-0, as before
             for xi = 1:nx
-                state.ptensor[xi, e, j] || continue
-                delta_assoc = (state.new_atable[ei, xi] -
-                                state.prev_atable[ei, xi])
-                weight += delta_assoc
+                key[xi] == ei || continue
+                weight += (state.new_atable[ei, xi] -
+                           state.prev_atable[ei, xi])
                 c += 1
             end
-            delta_card = (state.new_ctable[ei, c] -
+            weight += (state.new_ctable[ei, c] -
                        state.prev_ctable[ei, c])
-            weight += delta_card
         end
-        state.new_pls[j] = weight
+        state.partitions[key] = weight
     end
-
     return nothing
 end
 
@@ -214,13 +205,11 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.Vecto
 
     new_es = new_es[to_revise]
     prev_es = prev_es[to_revise]
-    state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
-                        to_revise)
-    process_retained!(get_gen_fn(trace), args, argdiffs, state)
-    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
-                            xs, logsumexp(state.new_pls),
-                            state.ptensor, state.new_pls)
-
+    state = RFUpdateState(new_es, prev_es, xs, trace.partitions, to_revise)
+    process_retained!(state)
+    new_trace = RFSTrace{T, K}(gen_fn, args, trace.choices,
+                               xs, logsumexp_collection(values(state.partitions)),
+                               state.partitions)
     weight = new_trace.score - trace.score
     retdiff = NoChange()
     discard = choicemap()
