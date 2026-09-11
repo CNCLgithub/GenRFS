@@ -81,3 +81,12 @@ function unsafe_find_true(subarray)
     # end
     # return x
 end
+
+@inline function logsumexp_collection(vals)
+    isempty(vals) && return -Inf
+    m = -Inf
+    for v in vals; v > m && (m = v); end
+    acc = 0.0
+    for v in vals; acc += exp(v - m); end
+    return m + log(acc)
+end

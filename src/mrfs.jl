@@ -8,8 +8,9 @@ function Gen.logpdf(r::MRFS{T},
                     steps::Int,
                     temp::Float64) where {T}
     !contains(elements, length(xs)) && return -Inf
-    logsumexp(first(associations(r, elements, xs, steps, temp)))
+    association_score(r, elements, xs, steps, temp)
 end
+
 Gen.has_output_grad(::MRFS) = false
 Gen.logpdf_grad(::MRFS, value::Vector, args...) = (nothing,)
 
@@ -30,13 +31,14 @@ Returns a vector where each element is indexed in the partition table.
 """
 function associations(::MRFS{T}, es::RFSElements{T}, xs::AbstractVector{T},
                        steps::Int64, t::Float64) where {T}
+    isempty(xs) && return empty_partition_score(es), BitArray{3}([false])
+
     # Random walk over partition space
     state = RTWState(es, xs)
-    if !isempty(xs)
-        for _ = 1:steps
-            random_tree_step!(state, t)
-        end
+    for _ = 1:steps
+        mcmc_tree_step!(st, t)
     end
+
     # Extract visited partitions
     n = length(state.visited)
     nx = length(xs)
@@ -75,7 +77,9 @@ function association_score(::MRFS{T},
     for _ = 1:steps
         mcmc_tree_step!(st, t)
     end
-    return state.pscore
+    # log ∑_s exp(score(s)) over the distinct visited partitions
+    logscore = logsumexp_collection(values(state.visited))
+    logscore
 end
 
 """
@@ -96,9 +100,9 @@ end
 
 
 function empty_partition_score(es::RFSElements)
-    score = 0.0
+    score = -Inf
     for e = es
-        score += cardinality(e, 0)
+        score = logsumexp(score, cardinality(e, 0))
     end
     return score
 end
