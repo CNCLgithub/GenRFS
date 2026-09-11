@@ -44,10 +44,14 @@ function gibbs_insert!(st::RTWState, t::Float64)::Nothing
     ei = st.assigned[x]
     # Sample new ej according to Gibbs
     @inbounds for j = 1:size(st.rowbuf, 1)
-        st.rowbuf[j] = (j == ei) ? 0.0 : exp(st.k_ins[x, j] / t)
+        st.rowbuf[j] = st.k_ins[x, j]            # RAW deltas, no exp
     end
-    ej = unsafe_categorical!(st.rowbuf)
-    if ej != ei
+    st.rowbuf[ei] = 0.0                          # self-entry
+    ej = unsafe_categorical!(st.rowbuf, t)       # sampler does temp + exp + normalize
+    # @show st.k_ins[x, :]
+    # @show st.rowbuf
+    # @show ej
+    if ej !== ei && ej !== 0
         partition_insert_move!(st, x, ei, ej)
         update_after_insert!(st, x, ei, ej)
     end
@@ -57,12 +61,13 @@ end
 "One Metropolis swap step: uniform proposal over all pairs (state-independent q)."
 function metro_swap!(st::RTWState, t::Float64)::Nothing
     nx = size(st.partition, 1)
+    # sample a random pair as an index into upper triangle
     N  = nx * (nx - 1) ÷ 2
     i  = rand(1:N)
     a, b = upper_to_pair(i, nx)
     ea, eb = st.assigned[a], st.assigned[b]
-    eb == ea && return nothing           # no-op, accepted trivially; q is state-independent
-    w = st.k_swp[upper_index(a, b, nx)]  # exact Δscore; move is self-inverse
+    eb == ea && return nothing           # a,b assigned to same element
+    w = st.k_swp[i]                      # exact Δscore; move is self-inverse
     if log(rand()) < w / t               # symmetric proposal ⇒ plain Metropolis
         partition_swap_move!(st, a, b)
         update_after_swap!(st, a, b)
@@ -84,6 +89,7 @@ function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     # - assigned: Vector{Int} used for fast inserts
     pstart, assigned = max_assignment(ml, mc, us)
     ls = partition_score(pstart, ml, mc)
+    
     # initialize kernels given initial partition
     k_swp = swap_kernel(pstart, ml)
     k_ins = ins_kernel(pstart, ml, mc)
@@ -201,12 +207,10 @@ function swap_kernel!(k_swap::Vector{Float64},
     i = 0
     @inbounds @views for a = 1:(nx - 1)
         # currently assigned element
-        # ei = findfirst(partition[:, a])
         ei = unsafe_find_true(partition[a, :])
         laei = l_table[ei, a]
         for b = (a+1):nx
             i += 1
-            # ej = findfirst(view(partition, :, b))
             ej = unsafe_find_true(partition[b, :])
             if ei == ej
                 # can't swap when assigned to same element
@@ -251,7 +255,10 @@ function partition_insert_move!(st::RTWState, x::Int, ei::Int, ej::Int)::Nothing
     st.partition[x, ei] = false
     st.partition[x, ej] = true
     st.assigned[x] = ej
+    # println("Inserting $x from $ei to $ej, w=$(st.k_ins[x, ej])")
+    # println("P-score before: $(st.pscore)")
     st.pscore += st.k_ins[x, ej]
+    # println("P-score after: $(st.pscore)")
     return nothing
 end
 
@@ -260,7 +267,11 @@ function partition_swap_move!(st::RTWState, a::Int, b::Int)::Nothing
     st.partition[a, ea] = false; st.partition[a, eb] = true
     st.partition[b, eb] = false; st.partition[b, ea] = true
     st.assigned[a], st.assigned[b] = eb, ea
-    st.pscore += st.k_swp[upper_index(a, b, size(st.partition, 1))]
+    idx = upper_index(a, b, size(st.partition, 1))
+    # println("Swapping $ei and $ej; w=$(st.k_swp[idx])")
+    # println("P-score before: $(st.pscore)")
+    st.pscore += st.k_swp[idx]
+    # println("P-score after: $(st.pscore)")
     return nothing
 end
 
@@ -273,6 +284,7 @@ function update_after_insert!(st::RTWState, x::Int, ei::Int, ej::Int)::Nothing
     refresh_k_ins_cols!(st, x, ei, ej)   # O(2*nx + ne)
     refresh_k_swp_pairs!(st, x)          # O(nx): pairs involving x
     idx = partition_to_tuple(st.partition)
+    # println("Score after insert: $(st.pscore)")
     haskey(st.visited, idx) || (st.visited[idx] = st.pscore)
     return nothing
 end
@@ -284,6 +296,7 @@ function update_after_swap!(st::RTWState, a::Int, b::Int)::Nothing
     refresh_k_swp_pairs!(st, a)          # O(nx) each
     refresh_k_swp_pairs!(st, b)
     idx = partition_to_tuple(st.partition)
+    # println("Score after swap: $(st.pscore)")
     haskey(st.visited, idx) || (st.visited[idx] = st.pscore)
     return nothing
 end
