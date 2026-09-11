@@ -59,31 +59,25 @@ function partition(es::RFSElements, s_table::Matrix{Float64})
     mem_partition_cube(a_table, us)
 end
 
-function rfs_table(es::RFSElements{T}, xs::AbstractArray,
-                   f::Function)::Matrix{Float64} where {T}
-    table = Matrix{Float64}(undef, length(es), length(xs))
-    for (i,(e,x)) in enumerate(product(es, xs))
-        @inbounds table[i] = f(e,x)
+function support_table(es::RFSElements{T},
+                       xs::AbstractVector{T})::Matrix{Float64} where {T}
+    nx = length(xs)
+    ne = length(es)
+    table = Matrix{Float64}(undef, ne, nx)
+    @inbounds for ei = 1:ne, xi = 1:nx
+        table[ei, xi] = support(es[ei],xs[xi])
     end
     table
 end
-
-function compute_support_table(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
-    ne, nx = length(es), length(xs)
-    table = Matrix{Float64}(undef, ne, nx)
-    @inbounds for x in 1:nx, e in 1:ne
-        table[e, x] = support(es[e], xs[x])
-    end
-    return table
-end
-
-function compute_cardinality_table(es::RFSElements{T}, nx::Int) where {T}
+function cardinality_table(es::RFSElements{T},
+                           xs::AbstractVector{T})::Matrix{Float64} where {T}
+    nx = length(xs)
     ne = length(es)
     table = Matrix{Float64}(undef, ne, nx + 1)
-    @inbounds for c in 0:nx, e in 1:ne
-        table[e, c + 1] = cardinality(es[e], c)
+    @inbounds for ei = 1:ne, xi = 0:nx
+        table[ei, xi+1] = cardinality(es[ei], xi)
     end
-    return table
+    table
 end
 
 """ Computes the logscore of every correspondence
@@ -97,8 +91,8 @@ end
 function associations(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     # s_table = rfs_table(es, xs, support)
     # c_table = rfs_table(es, collect(0:length(xs)), cardinality)
-    s_table = compute_support_table(es, xs)
-    c_table = compute_cardinality_table(es, length(xs))
+    s_table = support_table(es, xs)
+    c_table = cardinality_table(es, length(xs))
     p_cube = partition(es, s_table)
     nx, ne, np = size(p_cube)
     #no valid partitions found

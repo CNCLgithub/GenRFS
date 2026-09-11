@@ -22,10 +22,11 @@ end
 
 
 
-""" Computes the logscore of every correspondence
+"""
+   associations(::MRFS, elements, xs, steps, temp)
 
+Computes the logscore of every correspondence
 Returns a vector where each element is indexed in the partition table.
-
 """
 function associations(::MRFS{T}, es::RFSElements{T}, xs::AbstractVector{T},
                        steps::Int64, t::Float64) where {T}
@@ -37,19 +38,44 @@ function associations(::MRFS{T}, es::RFSElements{T}, xs::AbstractVector{T},
         end
     end
     # Extract visited partitions
-    n = length(state.partition_map)
+    n = length(state.visited)
     nx = length(xs)
     ne = length(es)
     
     ls = Vector{Float64}(undef, n)
     pt = zeros(Bool, nx, ne, n) # Initialized to false
     
-    @inbounds for (i, (tup_key, l)) in enumerate(state.partition_map)
+    @inbounds for (i, (tup_key, l)) in enumerate(state.visited)
         ls[i] = l
         ntuple_to_ptensor!(pt, i, tup_key)
     end
     
     return ls, BitArray{3}(pt)
+end
+
+
+"""
+
+    association_score(::MRFS, elements, xs, steps, temp)::Float64
+
+Integrates across over a random walk of partitions.
+Estimation has coverage bias.
+"""
+function association_score(::MRFS{T},
+                           es::RFSElements{T},
+                           xs::AbstractVector{T},
+                           steps::Int64,
+                           t::Float64
+                           )::Float64 where {T}
+    # Empty observation set -> simply logscore
+    isempty(xs) && return empty_partition_score(es)
+
+    # Random walk over partition space
+    state = RTWState(es, xs)
+    for _ = 1:steps
+        mcmc_tree_step!(st, t)
+    end
+    return state.pscore
 end
 
 """
@@ -68,3 +94,11 @@ Populates slice i of 3D tensor `pt` in-place from `tup_key`.
     return nothing
 end
 
+
+function empty_partition_score(es::RFSElements)
+    score = 0.0
+    for e = es
+        score += cardinality(e, 0)
+    end
+    return score
+end

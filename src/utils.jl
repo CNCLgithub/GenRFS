@@ -22,40 +22,52 @@ function softmax(x::Array{Float64}, t::Float64 = 1.0)
     return out
 end
 
-function softmax!(out::Array{Float64}, x::Array{Float64}, t::Float64 = 1.0)
-    isempty(x) && return x
-    nx = length(x)
-
-    # Single item
-    if nx === 1
-        out[1] = 1.0
-        return nothing
+function softmax!(out, x, t)
+    m = -Inf
+    @inbounds for v in x; v > m && (m = v); end
+    s = 0.0
+    @inbounds for i in eachindex(x)
+        e = @fastmath exp((x[i] - m) / t)
+        out[i] = e; s += e
     end
-
-    maxx = maximum(x)
-
-    # Singular mass
-    if maxx == Inf
-        fill!(out, 0.0)
-        out[argmax(x)] = 1.0
-        return nothing
-    end
-        
-    # Uniform
-    if maxx == -Inf
-        out[:] .= 1.0 / nx
-        return nothing
-    end
-
-    sxs = 0.0
-    @inbounds for i = 1:nx
-        v = @fastmath exp((x[i] - maxx) / t)
-        sxs += v
-        out[i] = v
-    end
-    rmul!(out, 1.0 / sxs)
-    return nothing
+    @inbounds for i in eachindex(x); out[i] /= s; end
+    nothing
 end
+# function softmax!(out::Array{Float64}, x::Array{Float64}, t::Float64 = 1.0,
+#                   maxx::Float64=maximum(x))
+#     isempty(x) && return x
+#     nx = length(x)
+
+#     # Single item
+#     if nx === 1
+#         out[1] = 1.0
+#         return nothing
+#     end
+
+#     maxx = maximum(x)
+
+#     # Singular mass
+#     if maxx == Inf
+#         fill!(out, 0.0)
+#         out[argmax(x)] = 1.0
+#         return nothing
+#     end
+        
+#     # Uniform
+#     if maxx == -Inf
+#         out[:] .= 1.0 / nx
+#         return nothing
+#     end
+
+#     sxs = 0.0
+#     @inbounds for i = 1:nx
+#         v = @fastmath exp((x[i] - maxx) / t)
+#         sxs += v
+#         out[i] = v
+#     end
+#     rmul!(out, 1.0 / sxs)
+#     return nothing
+# end
 
 function unsafe_find_true(subarray)
     findfirst(subarray)
