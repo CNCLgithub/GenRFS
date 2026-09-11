@@ -1,13 +1,12 @@
 export RFGM, RFSTrace
 
-struct RFSTrace{T} <: Gen.Trace
+struct RFSTrace{T, K} <: Gen.Trace
     gen_fn::GenerativeFunction
     args::Tuple # elements
     choices::ChoiceMap
     retval::PersistentVector{T}
     score::Float64
-    ptensor::BitArray{3}
-    pscores::Vector{Float64}
+    partitions::Dict{NTuple{K, UInt16}, Float64}
 end
 
 @inline Gen.get_args(trace::RFSTrace) = trace.args
@@ -45,15 +44,17 @@ function Gen.propose(gen_fn::RFGM{T}, args::Tuple) where {T}
 end
 
 function RFSTrace(gen_fn::RFGM{T}, es, xs) where {T}
-    pls, ptensor = associations(gen_fn.estimator, es, xs,
-                                gen_fn.estimator_args...)
-    weight = logsumexp(pls)
+    visited = associations(gen_fn.estimator, es, xs,
+                           gen_fn.estimator_args...)
+    weight = logsumexp_collection(values(visited))
     nx = length(xs)
     choices = choicemap()
     @inbounds for i = 1:nx
         choices[i] = xs[i]
     end
-    RFSTrace{T}(gen_fn, (es, ), choices, PersistentVector{T}(xs), weight, ptensor, pls)
+    K = length(xs)
+    RFSTrace{T, K}(gen_fn, (es,), choices, PersistentVector{T}(xs),
+                   weight, visited)
 end
 
 function Gen.simulate(gen_fn::RFGM{T}, args::Tuple) where {T}

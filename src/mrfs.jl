@@ -36,23 +36,24 @@ function associations(::MRFS{T}, es::RFSElements{T}, xs::AbstractVector{T},
     # Random walk over partition space
     state = RTWState(es, xs)
     for _ = 1:steps
-        mcmc_tree_step!(st, t)
+        mcmc_tree_step!(state, t)
     end
 
-    # Extract visited partitions
-    n = length(state.visited)
-    nx = length(xs)
-    ne = length(es)
+    # # Extract visited partitions
+    # n = length(state.visited)
+    # nx = length(xs)
+    # ne = length(es)
     
-    ls = Vector{Float64}(undef, n)
-    pt = zeros(Bool, nx, ne, n) # Initialized to false
+    # ls = Vector{Float64}(undef, n)
+    # pt = zeros(Bool, nx, ne, n) # Initialized to false
     
-    @inbounds for (i, (tup_key, l)) in enumerate(state.visited)
-        ls[i] = l
-        ntuple_to_ptensor!(pt, i, tup_key)
-    end
-    
-    return ls, BitArray{3}(pt)
+    # @inbounds for (i, (tup_key, l)) in enumerate(state.visited)
+    #     ls[i] = l
+    #     ntuple_to_ptensor!(pt, i, tup_key)
+    # end
+    # return ls, BitArray{3}(pt)
+    #
+    return state
 end
 
 
