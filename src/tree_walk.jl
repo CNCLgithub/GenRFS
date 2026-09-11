@@ -87,6 +87,7 @@ function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     # initialize kernels given initial partition
     k_swp = swap_kernel(pstart, ml)
     k_ins = ins_kernel(pstart, ml, mc)
+
     # normalized kernels
     # REVIEW: Not used; application for Roa-blackwellized
     # estimation
@@ -131,7 +132,7 @@ function max_assignment(l_table::Matrix{Float64},
         for ei = sortperm(max_charges)
             count(partition[:, ei]) >= max_charges[ei] && continue
             partition[xi, ei] = true
-            assigned[x] = ei
+            assigned[xi] = ei
             break
         end
     end
@@ -139,7 +140,9 @@ function max_assignment(l_table::Matrix{Float64},
 end
 
 
-function ins_kernel(partition::BitMatrix, l_table::Matrix{Float64}, c_table::Matrix{Float64})
+function ins_kernel(partition::BitMatrix,
+                    l_table::Matrix{Float64},
+                    c_table::Matrix{Float64})
     (ne, nx) = size(l_table)
     k_ins = fill(-Inf, (nx, ne))
     ins_kernel!(k_ins, partition, l_table, c_table)
@@ -163,8 +166,8 @@ function ins_kernel!(k_ins::Matrix{Float64},
         pci = c_table[ei, ecs[ei]]
         for ej = 1:ne
             k_ins[x, ej] = if ej == ei
-                # don't reassign
-                -Inf
+                # 0 log weight transition to self
+                0.0
             else
                 # k_ins = prob new assignment / prob current assign
                 # P(x | ej) * P(c_j + 1) * P(c_i - 1) /
@@ -179,12 +182,6 @@ function ins_kernel!(k_ins::Matrix{Float64},
         end
     end
 
-    # 0 log weight transition to self
-    @inbounds for x = 1:nx
-        st.k_ins[x, st.assigned[x]] = 0.0
-        # REVIEW: could add for RB
-        # st.nk_ins[x] = logsumexp(view(st.k_ins, x, :)) 
-    end
     return nothing
 end
 
