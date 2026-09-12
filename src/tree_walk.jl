@@ -363,8 +363,8 @@ function refresh_k_ins_row!(st::RTWState, x::Int)::Nothing
             st.k_ins[x, e] = 0.0
         else
             e_idx = count_idx(st.partition, e)
-            st.k_ins[x, e] = (st.ml[e, x] + st.mc[e, e_idx + 1] + st.mc[ej, ej_idx - 1])
-                           - (st.ml[ej, x] + st.mc[ej, ej_idx] + st.mc[e, e_idx])
+            st.k_ins[x, e] = ((st.ml[e, x] + st.mc[e, e_idx + 1] + st.mc[ej, ej_idx - 1])
+                              - (st.ml[ej, x] + st.mc[ej, ej_idx] + st.mc[e, e_idx]))
         end
     end
     return nothing
