@@ -1,9 +1,6 @@
 export mem_partition_cube
 
 using LRUCache
-# using Cassette: Cassette, @context, overdub
-
-# using LightGraphs
 using FunctionalCollections: pvec, assoc, PersistentVector
 
 function partition_cube(a_table::BitMatrix, max_charges::Vector{Int})
