@@ -10,8 +10,9 @@ function Gen.logpdf(rfs::RFS{T},
                     xs::AbstractVector{T},
                     elements::RFSElements{T}) where {T}
     !contains(elements, length(xs)) && return -Inf
-    logsumexp(first(associations(rfs, elements, xs)))
+    logsumexp_collection(values(associations(rfs, elements, xs)))
 end
+
 Gen.has_output_grad(::RFS) = false
 Gen.logpdf_grad(::RFS, value::Vector, args...) = (nothing,)
 
@@ -85,60 +86,43 @@ function cardinality_table(es::RFSElements{T},
     cardinality_table(es, length(xs))
 end
 
-""" Computes the logscore of every correspondence
-
-Returns a vector where each element is indexed in the partition table.
-
-"""
 function associations(::RFS{T}, es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     associations(es, xs)
 end
+
+"""
+    associations(es, xs) -> Dict{NTuple{nx, UInt16}, Float64}
+
+Exhaustive enumeration of all valid partitions. Keys use the same encoding as
+the MRFS branch (detection-major tuples of element indices, UInt16), so both
+branches produce interchangeable dicts.
+"""
 function associations(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
-    # s_table = rfs_table(es, xs, support)
-    # c_table = rfs_table(es, collect(0:length(xs)), cardinality)
     s_table = support_table(es, xs)
     c_table = cardinality_table(es, length(xs))
     p_cube = partition(es, s_table)
     nx, ne, np = size(p_cube)
-    #no valid partitions found
-    ls = np == 0 ? Float64[-Inf] : Vector{Float64}(undef, np)
-    ixs = 1:nx
-    ies = 1:ne
+    # No valid partitions: empty dict; logsumexp_collection gives -Inf downstream
+    np == 0 && return Dict{NTuple{nx, UInt16}, Float64}()
 
+    visited = Dict{NTuple{nx, UInt16}, Float64}()
+    sizehint!(visited, np)
     @inbounds for p in 1:np
         part_ls = 0.0
+        key = Vector{UInt16}(undef, nx)
         for e in 1:ne
             nassoc = 0
             for x in 1:nx
                 if p_cube[x, e, p]
                     nassoc += 1
                     part_ls += s_table[e, x]
+                    key[x] = UInt16(e)
                 end
             end
             part_ls += c_table[e, nassoc + 1]
-            
-            # Correct short-circuit exit on invalid partition
-            if part_ls == -Inf
-                break
-            end
+            part_ls == -Inf && break        # invalid partition, short-circuit
         end
-        ls[p] = part_ls
+        visited[ntuple(i -> key[i], Val(nx))] = part_ls
     end
-
-   # @inbounds for p = 1:np
-   #      part_ls = 0.0
-   #      for e in ies
-   #          part_ls === -Inf && continue # no need to continue if -Inf
-   #          nassoc = 1
-   #          assoc_ls = 0.0
-   #          for x = ixs
-   #              p_cube[x, e, p] || continue
-   #              nassoc += 1
-   #              part_ls += s_table[e, x]
-   #          end
-   #          part_ls += c_table[e, nassoc]
-   #      end
-   #      ls[p] = part_ls
-   #  end
-    ls, p_cube
+    return visited
 end

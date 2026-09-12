@@ -2,6 +2,8 @@ using GenRFS
 using Test
 using Gen
 
+import GenRFS
+
 @testset "Markov RFS (MRFS) Approximation" begin
     rfs_float64 = RFS{Float64}()
     mrfs_float64 = MRFS{Float64}()
@@ -32,3 +34,24 @@ using Gen
     @test abs(approx_long - exact_score) <= abs(approx_short - exact_score) + 1e-3
     @test isapprox(approx_long, exact_score, atol = 0.5)
 end
+
+@testset "Analytical dict consistency" begin
+
+    # Construct elements
+    es = RandomFiniteElement{Float64}[
+        BernoulliElement{Float64}(0.8, normal, (0.0, 0.5)),
+        BernoulliElement{Float64}(0.6, normal, (2.0, 0.5)),
+        PoissonElement{Float64}(2.0, normal, (4.0, 0.5))
+    ]
+
+    xs = [0.1, 2.1, 3.9, 4.2]
+    
+    visited_exact = GenRFS.associations(es, xs)
+    state = GenRFS.RTWState(es, xs)
+    for _ = 1:2000; GenRFS.mcmc_tree_step!(state, 1.0); end
+    for (key, l) in state.visited
+        @test haskey(visited_exact, key)          # walk visited a valid partition
+        @test isapprox(visited_exact[key], l; atol = 1e-10)  # scores agree
+    end
+end
+

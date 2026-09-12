@@ -105,7 +105,10 @@ function RFUpdateState(new_es, prev_es, xs,
 end
 
 function process_retained!(state::RFUpdateState{K}) where {K}
-    nx = first(size(state.new_atable))       # ne × nx
+    @show size(state.prev_atable)
+    @show size(state.new_atable)
+    @show state.to_revise
+    ne, nx = size(state.new_atable)
     to_revise = state.to_revise
     @inbounds for key in collect(keys(state.partitions))   # collect before mutating
         weight = state.partitions[key]
@@ -133,7 +136,7 @@ function compare_rfes(a, b)
     new_length = length(b)
     diffs = Dict{Int64, Gen.Diff}()
 
-    if prev_length == new_length
+    if prev_length === new_length
         for (ei, ea) = enumerate(a)
             if !in(ea, b)
                 diffs[ei] = UnknownChange()
@@ -155,8 +158,8 @@ end
 function Gen.update(trace::RFSTrace{T}, args::Tuple,
         argdiffs::Tuple{<:Gen.UnknownChange}, cm::ChoiceMap) where {T}
     prev_args = get_args(trace)
-    vdiff = compare_rfes(prev_args[1], args[1])
-    Gen.update(trace, args, (vdiff,), cm)
+    diff = compare_rfes(prev_args[1], args[1])
+    Gen.update(trace, args, (diff,), cm)
 end
 
 # TODO: update into new parent address? (e.g., Gen.Unfold)
@@ -180,7 +183,6 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.SetDi
                     ::EmptyChoiceMap) where {T}
     gen_fn = get_gen_fn(trace)
     prev_es = get_args(trace)[1]
-    ptensor = trace.ptensor
     xs = trace.retval
     new_es = args[1]
 
@@ -190,21 +192,16 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.SetDi
     (new_trace, weight, NoChange(), choicemap())
 end
 
-function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.VectorDiff},
-                    ::EmptyChoiceMap) where {T}
+function Gen.update(trace::RFSTrace{T, K}, args::Tuple, argdiffs::Tuple{<:Gen.VectorDiff},
+                    ::EmptyChoiceMap) where {T, K}
     gen_fn = get_gen_fn(trace)
     prev_es = get_args(trace)[1]
-    ptensor = trace.ptensor
-    prev_pls = trace.pscores
     xs = trace.retval
     new_es = args[1]
     ediffs = argdiffs[1]
 
     @assert ediffs.new_length == ediffs.prev_length
     to_revise = collect(Int64, keys(ediffs.updated))
-
-    new_es = new_es[to_revise]
-    prev_es = prev_es[to_revise]
     state = RFUpdateState(new_es, prev_es, xs, trace.partitions, to_revise)
     process_retained!(state)
     new_trace = RFSTrace{T, K}(gen_fn, args, trace.choices,
@@ -255,17 +252,15 @@ function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
 
 
     @assert ediffs.new_length == ediffs.prev_length
-    # some new elements, but can keep the ptensor
     return process_elem_swap(trace, args, argdiffs)
 end
 
-function process_elem_swap(trace::GenRFS.RFSTrace{T}, args::Tuple,
-                           argdiffs::Tuple{<:Gen.VectorDiff}) where {T}
+function process_elem_swap(trace::GenRFS.RFSTrace{T,K}, args::Tuple,
+                           argdiffs::Tuple{<:Gen.VectorDiff}) where {T,K}
 
+    partitions = trace.partitions
     gen_fn = get_gen_fn(trace)
     prev_es = get_args(trace)[1]
-    ptensor = trace.ptensor
-    prev_pls = trace.pscores
     xs = trace.retval
     nret = length(xs)
     retdiff = (nochange() for _ = 1:nret)
@@ -275,15 +270,11 @@ function process_elem_swap(trace::GenRFS.RFSTrace{T}, args::Tuple,
 
     to_revise = collect(Int64, keys(ediffs.updated))
 
-    new_es = new_es[to_revise]
-    prev_es = prev_es[to_revise]
-    state = RFUpdateState(new_es, prev_es, xs, ptensor, prev_pls,
-                          to_revise)
-    process_retained!(get_gen_fn(trace), args, argdiffs, state)
-    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
-                            xs, logsumexp(state.new_pls),
-                            state.ptensor, state.new_pls)
-
+    state = RFUpdateState(new_es, prev_es, xs, trace.partitions, to_revise)
+    process_retained!(state)
+    new_trace = RFSTrace{T, K}(gen_fn, args, trace.choices,
+                               xs, logsumexp_collection(values(state.partitions)),
+                               state.partitions)
     weight = new_trace.score - trace.score
 
     return (new_trace, weight, retdiff)
