@@ -284,6 +284,7 @@ end
 "Restore kernel consistency after insert move x: ei -> ej."
 function update_after_insert!(st::RTWState, x::Int, ei::Int, ej::Int)::Nothing
     refresh_k_ins_cols!(st, x, ei, ej)   # O(2*nx + ne)
+    refresh_k_ins_row!(st, x) 
     refresh_k_swp_pairs!(st, x)          # O(nx): pairs involving x
     idx = partition_to_tuple(st.partition)
     # println("Score after insert: $(st.pscore)")
