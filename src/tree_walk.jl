@@ -314,7 +314,7 @@ function refresh_k_ins_row!(st::RTWState, x::Int)::Nothing
     ej_idx = count_idx(st.partition, ej)    # table index for count c_ej
     @inbounds for e = 1:ne
         if e == ej
-            st.k_ins[x, e] = -Inf
+            st.k_ins[x, e] = 0.0
         else
             e_idx = count_idx(st.partition, e)
             st.k_ins[x, e] = (st.ml[e, x] + st.mc[e, e_idx + 1] + st.mc[ej, ej_idx - 1])
