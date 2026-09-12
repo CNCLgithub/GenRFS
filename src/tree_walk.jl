@@ -26,6 +26,51 @@ end
 # TREE WALK
 #--------------------------------------------------------------------------------
 
+const KINS_MISMATCH = Ref(0)
+
+function check_kernels(st::RTWState, tag::String)
+    k_ref = ins_kernel(st.partition, st.ml, st.mc)
+    ks_ref = swap_kernel(st.partition, st.ml)
+    bad_ins = findall(!isapprox(k_ref[i], st.k_ins[i]; atol = 1e-8) for i in eachindex(k_ref))
+    bad_swp = findall(!isapprox(ks_ref[i], st.k_swp[i]; atol = 1e-8) for i in eachindex(ks_ref))
+    if !isempty(bad_ins) || !isempty(bad_swp)
+        KINS_MISMATCH[] += 1
+        if KINS_MISMATCH[] <= 3   # print first 3 occurrences only
+            @warn "kernel drift after $tag" n_ins_bad = length(bad_ins) n_swp_bad = length(bad_swp)
+            for i in first(bad_ins, 3)
+                x = Int(ceil(i / size(k_ref, 2)))   # column-major
+                e = i - (x - 1) * size(k_ref, 2)
+                @info "k_ins[$x,$e] refreshed=$(st.k_ins[x,e]) exact=$(k_ref[x,e]) assigned=$(st.assigned[x]) count=$(count_idx(st.partition, e))"
+            end
+        end
+    end
+end
+
+function mcmc_tree_step_debug!(st::RTWState, t::Float64 = 1.0, p_swap::Float64 = 0.5)
+    if rand() < p_swap
+        metro_swap!(st, t)
+        check_kernels(st, "swap")
+    else
+        gibbs_insert!(st, t)
+        check_kernels(st, "insert")
+    end
+end
+
+
+# function mcmc_tree_step_debug!(st::RTWState, t::Float64=1.0, p_swap::Float64=0.5)
+#     mcmc_tree_step!(st, t, p_swap)
+#     fresh = partition_score(st.partition, st.ml, st.mc)
+#     if !isapprox(st.pscore, fresh; atol=1e-8)
+#         @warn "pscore drift" st.pscore fresh (fresh - st.pscore)
+#     end
+#     # also: full kernel consistency
+#     k_ref = ins_kernel(st.partition, st.ml, st.mc)
+#     @assert isapprox(k_ref, st.k_ins; atol=1e-8) "k_ins drift"
+#     ks_ref = swap_kernel(st.partition, st.ml)
+#     @assert isapprox(ks_ref, st.k_swp; atol=1e-8) "k_swp drift"
+# end
+
+
 "Composed MCMC step: swaps w.p. p_swap (ergodicity under finite-support cardinality), else Gibbs insert."
 function mcmc_tree_step!(st::RTWState, t::Float64=1.0, p_swap::Float64=0.5)::Nothing
     if rand() < p_swap
@@ -311,8 +356,8 @@ end
 "Recompute row x of k_ins. Called when x's element identity changes."
 function refresh_k_ins_row!(st::RTWState, x::Int)::Nothing
     ne = size(st.k_ins, 2)
-    ej = st.assigned[x]                     # x's current (post-move) element
-    ej_idx = count_idx(st.partition, ej)    # table index for count c_ej
+    ej = st.assigned[x]
+    ej_idx = count_idx(st.partition, ej)
     @inbounds for e = 1:ne
         if e == ej
             st.k_ins[x, e] = 0.0
@@ -324,6 +369,8 @@ function refresh_k_ins_row!(st::RTWState, x::Int)::Nothing
     end
     return nothing
 end
+
+
 
 """
 Recompute k_ins entries stale after insert move x: ei -> ej.

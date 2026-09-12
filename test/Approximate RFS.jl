@@ -58,7 +58,7 @@ end
 @testset "MRFS vs RFS" begin
     rfs = RFS{Float64}()
     mrfs = MRFS{Float64}()
-    temp = 10.0
+    temp = 1.0
 
     @testset "two separated clusters (singles + ensembles)" begin
         es = [

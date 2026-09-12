@@ -84,7 +84,7 @@ end
     tr = make_trace(gm_bern, es0, [0.1])
     es1 = [BernoulliElement{Float64}(0.9, normal, (1.0, 0.5)),
            BernoulliElement{Float64}(0.9, normal, (5.0, 0.5))]
-    sdiff = Gen.SetDiff(1, 2)
+    sdiff = Gen.SetDiff(Set([es1[2]]), Set{BernoulliElement}())
     new_tr, weight, _, _ = Gen.update(tr, (es1,), (sdiff,), EmptyChoiceMap())
     fresh = make_trace(gm_bern, es1, [0.1])
     @test isapprox(Gen.get_score(new_tr), Gen.get_score(fresh); atol = 1e-6)

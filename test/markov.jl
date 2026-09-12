@@ -31,6 +31,6 @@ xs = randn(nx)
 
 steps = 1000
 temp = 10.0
-# Gen.logpdf(mrfs_float64, xs, es, steps, temp)
-results = convergence(xs, es, steps, temp)
-display(results)
+@show Gen.logpdf(mrfs_float64, xs, es, steps, temp)
+# results = convergence(xs, es, steps, temp)
+# display(results)
