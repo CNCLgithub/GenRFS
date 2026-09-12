@@ -25,7 +25,7 @@ end
 # Helpers
 #################################################################################
 
-""" Whether the given RFS can support the cardinality of the observation"""
+"""Whether the given RFS can support the cardinality of the observation"""
 function contains(r::RFSElements, n::Int)::Bool
     _min = 0
     _max = 0
@@ -91,7 +91,7 @@ function associations(::RFS{T}, es::RFSElements{T}, xs::AbstractVector{T}) where
 end
 
 """
-    associations(es, xs) -> Dict{NTuple{nx, UInt16}, Float64}
+    associations(es, xs) -> Dict{PartitionKey, Float64}
 
 Exhaustive enumeration of all valid partitions. Keys use the same encoding as
 the MRFS branch (detection-major tuples of element indices, UInt16), so both
@@ -103,9 +103,9 @@ function associations(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     p_cube = partition(es, s_table)
     nx, ne, np = size(p_cube)
     # No valid partitions: empty dict; logsumexp_collection gives -Inf downstream
-    np == 0 && return Dict{NTuple{nx, UInt16}, Float64}()
+    np == 0 && return Dict{PartitionKey, Float64}()
 
-    visited = Dict{NTuple{nx, UInt16}, Float64}()
+    visited = Dict{PartitionKey, Float64}()
     sizehint!(visited, np)
     @inbounds for p in 1:np
         part_ls = 0.0
@@ -122,7 +122,7 @@ function associations(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
             part_ls += c_table[e, nassoc + 1]
             part_ls == -Inf && break        # invalid partition, short-circuit
         end
-        visited[ntuple(i -> key[i], Val(nx))] = part_ls
+        visited[partition_key_from_vector(key)] = part_ls
     end
     return visited
 end

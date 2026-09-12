@@ -1,6 +1,8 @@
 using LinearAlgebra
 # using DataStructures # TODO: Remove
 
+const MAX_XS = 64
+
 """
     RTWState{K}(...)
 
@@ -46,7 +48,7 @@ function gibbs_insert!(st::RTWState, t::Float64)::Nothing
     @inbounds for j = 1:size(st.rowbuf, 1)
         st.rowbuf[j] = st.k_ins[x, j]            # RAW deltas, no exp
     end
-    st.rowbuf[ei] = 0.0                          # self-entry
+    # st.rowbuf[ei] = 0.0                          # self-entry
     ej = unsafe_categorical!(st.rowbuf, t)       # sampler does temp + exp + normalize
     # @show st.k_ins[x, :]
     # @show st.rowbuf
@@ -106,7 +108,7 @@ function RTWState(es::RFSElements{T}, xs::AbstractVector{T}) where {T}
     
     # add entries to queues
     # dereference initial partition
-    K = NTuple{length(xs), UInt16}
+    K = PartitionKey
     pm = Dict{K, Float64}(partition_to_tuple(pstart) => ls)
     state = RTWState{K}(ml, mc, pstart, ls, k_swp, k_ins,
                         nk_swp, nk_ins, assigned, rowbuf, pm)
@@ -312,7 +314,7 @@ function refresh_k_ins_row!(st::RTWState, x::Int)::Nothing
     ej_idx = count_idx(st.partition, ej)    # table index for count c_ej
     @inbounds for e = 1:ne
         if e == ej
-            st.k_ins[x, e] = 0.0
+            st.k_ins[x, e] = -Inf
         else
             e_idx = count_idx(st.partition, e)
             st.k_ins[x, e] = (st.ml[e, x] + st.mc[e, e_idx + 1] + st.mc[ej, ej_idx - 1])
@@ -451,10 +453,30 @@ end
 """
     bitmatrix_to_ntuple(pmat::BitMatrix)::NTuple
 
-Converts an (N × ne) BitMatrix into a stack-allocated NTuple{N, UInt16} key.
+Converts an (N × ne) BitMatrix into a fixed-size key NTuple{MAX_XS, UInt16}.
+Unassigned slots are 0 (valid partitions never assign to element 0).
+One key type for the whole run: no recompilation per detection count.
 """
-@inline function partition_to_tuple(partition::BitMatrix)::NTuple
+
+"Fixed-size partition key: one type for the whole run. Slots beyond `nx`
+are 0 (valid partitions never assign to element 0). Using a fixed key type
+avoids per-detection-count recompilation of RTWState, traces, and dicts."
+const PartitionKey = NTuple{MAX_XS, UInt16}
+
+"Pad a short assignment vector/tuple to a `PartitionKey`."
+@inline function partition_key_from_vector(key::Vector{UInt16})::PartitionKey
+    nx = length(key)
+    @assert nx <= MAX_XS
+    ntuple(Val(MAX_XS)) do i
+        i <= nx ? key[i] : UInt16(0)
+    end
+end
+
+@inline function partition_to_tuple(partition::BitMatrix)::PartitionKey
     nx = size(partition, 1)
-    # Returns NTuple{nx, UInt16}
-    ntuple(x -> UInt16(unsafe_find_true(view(partition, x, :))), nx)
+    @assert nx <= MAX_XS
+    # Padded to NTuple{MAX_XS, UInt16}; slots > nx are 0x0000
+    ntuple(Val(MAX_XS)) do x
+        x <= nx ? UInt16(unsafe_find_true(view(partition, x, :))) : UInt16(0)
+    end
 end

@@ -83,17 +83,18 @@ function association_score(::MRFS{T},
 end
 
 """
-    ntuple_to_ptensor!(pt::AbstractArray{Bool, 3}, i::Int, tup_key::NTuple{N, T}) where {N, T}
+    ntuple_to_ptensor!(pt::AbstractArray{Bool, 3}, i::Int, tup_key::NTuple{MAX_XS, UInt16})
 
 Populates slice i of 3D tensor `pt` in-place from `tup_key`.
+Zero slots (padding) are skipped.
 """
 @inline function ntuple_to_ptensor!(pt::AbstractArray{Bool, 3},
                                     i::Int,
-                                    tup_key::NTuple{N, T}) where {N, T}
-    nx = length(tup_key)
+                                    tup_key::NTuple{MAX_XS, UInt16})
+    nx = size(pt, 1)
     @inbounds for x in 1:nx
         e = Int(tup_key[x])
-        pt[x, e, i] = true
+        e != 0 && (pt[x, e, i] = true)
     end
     return nothing
 end

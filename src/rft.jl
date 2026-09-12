@@ -8,14 +8,14 @@ function partition_cube(a_table::BitMatrix, max_charges::Vector{Int})
     nx === 0 && return falses(0, ne, 1)
     
     # Pre-allocate output buffer
-    partitions = Vector{NTuple{nx, UInt16}}()
+    partitions = Vector{PartitionKey}()
     assignment = zeros(UInt16, nx)
     charges = copy(max_charges)
     
     # DFS Recursive Backtracking
     function dfs(depth::Int)
         if depth > nx
-            push!(partitions, Tuple(assignment))
+            push!(partitions, partition_key_from_vector(assignment))
             return
         end
         
@@ -38,7 +38,8 @@ function partition_cube(a_table::BitMatrix, max_charges::Vector{Int})
     p_cube = falses(nx, ne, np)
     @inbounds for (p, tup) in enumerate(partitions)
         for x in 1:nx
-            p_cube[x, Int(tup[x]), p] = true
+            e = Int(tup[x])
+            e != 0 && (p_cube[x, e, p] = true)
         end
     end
     

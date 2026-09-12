@@ -1,12 +1,12 @@
 export RFGM, RFSTrace
 
-struct RFSTrace{T, K} <: Gen.Trace
+struct RFSTrace{T} <: Gen.Trace
     gen_fn::GenerativeFunction
     args::Tuple # elements
     choices::ChoiceMap
     retval::PersistentVector{T}
     score::Float64
-    partitions::Dict{NTuple{K, UInt16}, Float64}
+    partitions::Dict{PartitionKey, Float64}
 end
 
 @inline Gen.get_args(trace::RFSTrace) = trace.args
@@ -52,8 +52,7 @@ function RFSTrace(gen_fn::RFGM{T}, es, xs) where {T}
     @inbounds for i = 1:nx
         choices[i] = xs[i]
     end
-    K = length(xs)
-    RFSTrace{T, K}(gen_fn, (es,), choices, PersistentVector{T}(xs),
+    RFSTrace{T}(gen_fn, (es,), choices, PersistentVector{T}(xs),
                    weight, visited)
 end
 
@@ -83,42 +82,50 @@ end
 # function Gen.regenerate(gen_fn::RFGM{T}, args::Tuple, selection::Selection) where {T}
 # end
 
-mutable struct RFUpdateState{K}
+mutable struct RFUpdateState
     new_atable::Matrix{Float64}
     new_ctable::Matrix{Float64}
     prev_atable::Matrix{Float64}
     prev_ctable::Matrix{Float64}
-    partitions::Dict{NTuple{K, UInt16}, Float64}
+    partitions::Dict{PartitionKey, Float64}
     to_revise::Vector{Int64}
 end
 
-function RFUpdateState(new_es, prev_es, xs,
-                       partitions::Dict{NTuple{K, UInt16}, Float64},
-                       to_revise) where {K}
+function RFUpdateState(prev_trace::RFSTrace{T},
+                       new_es::RFSElements{T},
+                       xs::AbstractVector{T},
+                       to_revise::Vector{Int64}) where {T}
     nx = length(xs)
-    prev_ctable = cardinality_table(prev_es, nx)
-    prev_atable = support_table(prev_es, xs)
-    new_ctable = cardinality_table(new_es, nx)
-    new_atable = support_table(new_es, xs)
+    # Slice to revised elements only: tables are (n_revise × nx) / (n_revise × (nx+1)),
+    # indexed by LOCAL index j; global index is to_revise[j]. Avoids O(ne·nx)
+    # rebuilds when only one element changed — cost is O(|to_revise|·nx).
+    prev_es = get_args(prev_trace)[1]
+    prev_es_r = prev_es[to_revise]
+    new_es_r  = new_es[to_revise]
+    prev_atable = support_table(prev_es_r, xs)
+    prev_ctable = cardinality_table(prev_es_r, nx)
+    new_atable = support_table(new_es_r, xs)
+    new_ctable = cardinality_table(new_es_r, nx)
     RFUpdateState(new_atable, new_ctable, prev_atable, prev_ctable,
-                  partitions, to_revise)
+                  prev_trace.partitions, to_revise)
 end
 
-function process_retained!(state::RFUpdateState{K}) where {K}
-    ne, nx = size(state.new_atable)
+function process_retained!(state::RFUpdateState)
+    nrev, nx = size(state.new_atable)
     to_revise = state.to_revise
     @inbounds for key in collect(keys(state.partitions))   # collect before mutating
         weight = state.partitions[key]
-        for ei in to_revise
-            c = 1                            # c = 1 denotes card-0, as before
+        for j = 1:nrev
+            g = to_revise[j]                # global element index
+            c = 1                           # c = 1 denotes card-0, as before
             for xi = 1:nx
-                key[xi] == ei || continue
-                weight += (state.new_atable[ei, xi] -
-                           state.prev_atable[ei, xi])
+                key[xi] == g || continue
+                weight += (state.new_atable[j, xi] -
+                           state.prev_atable[j, xi])
                 c += 1
             end
-            weight += (state.new_ctable[ei, c] -
-                       state.prev_ctable[ei, c])
+            weight += (state.new_ctable[j, c] -
+                       state.prev_ctable[j, c])
         end
         state.partitions[key] = weight
     end
@@ -189,8 +196,8 @@ function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.SetDi
     (new_trace, weight, NoChange(), choicemap())
 end
 
-function Gen.update(trace::RFSTrace{T, K}, args::Tuple, argdiffs::Tuple{<:Gen.VectorDiff},
-                    ::EmptyChoiceMap) where {T, K}
+function Gen.update(trace::RFSTrace{T}, args::Tuple, argdiffs::Tuple{<:Gen.VectorDiff},
+                    ::EmptyChoiceMap) where {T}
     gen_fn = get_gen_fn(trace)
     prev_es = get_args(trace)[1]
     xs = trace.retval
@@ -199,11 +206,11 @@ function Gen.update(trace::RFSTrace{T, K}, args::Tuple, argdiffs::Tuple{<:Gen.Ve
 
     @assert ediffs.new_length == ediffs.prev_length
     to_revise = collect(Int64, keys(ediffs.updated))
-    state = RFUpdateState(new_es, prev_es, xs, trace.partitions, to_revise)
+    state = RFUpdateState(trace, new_es, xs, to_revise)
     process_retained!(state)
-    new_trace = RFSTrace{T, K}(gen_fn, args, trace.choices,
-                               xs, logsumexp_collection(values(state.partitions)),
-                               state.partitions)
+    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
+                            xs, logsumexp_collection(values(state.partitions)),
+                            state.partitions)
     weight = new_trace.score - trace.score
     retdiff = NoChange()
     discard = choicemap()
@@ -252,8 +259,8 @@ function Gen.regenerate(trace::GenRFS.RFSTrace{T}, args::Tuple,
     return process_elem_swap(trace, args, argdiffs)
 end
 
-function process_elem_swap(trace::GenRFS.RFSTrace{T,K}, args::Tuple,
-                           argdiffs::Tuple{<:Gen.VectorDiff}) where {T,K}
+function process_elem_swap(trace::GenRFS.RFSTrace{T}, args::Tuple,
+                           argdiffs::Tuple{<:Gen.VectorDiff}) where {T}
 
     partitions = trace.partitions
     gen_fn = get_gen_fn(trace)
@@ -267,11 +274,11 @@ function process_elem_swap(trace::GenRFS.RFSTrace{T,K}, args::Tuple,
 
     to_revise = collect(Int64, keys(ediffs.updated))
 
-    state = RFUpdateState(new_es, prev_es, xs, trace.partitions, to_revise)
+    state = RFUpdateState(trace, new_es, xs, to_revise)
     process_retained!(state)
-    new_trace = RFSTrace{T, K}(gen_fn, args, trace.choices,
-                               xs, logsumexp_collection(values(state.partitions)),
-                               state.partitions)
+    new_trace = RFSTrace{T}(gen_fn, args, trace.choices,
+                            xs, logsumexp_collection(values(state.partitions)),
+                            state.partitions)
     weight = new_trace.score - trace.score
 
     return (new_trace, weight, retdiff)

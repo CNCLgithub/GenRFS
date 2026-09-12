@@ -7,7 +7,7 @@ using StatProfilerHTML
 
 @testset "Profiling" begin
     mrfs_float = MRFS{Float64}()
-    xs = randn(100)
+    xs = randn(64)
     n_elements = 50
     nsteps = 100000
     es = RandomFiniteElement{Float64}[
