@@ -31,6 +31,7 @@ using GenRFS
 
     @testset "RFGM Model" begin
         include("RFGM.jl")
+        include("RFGM_incremental.jl")
     end
 
     @testset "Analytic vs Approximate Performance & Accuracy" begin
