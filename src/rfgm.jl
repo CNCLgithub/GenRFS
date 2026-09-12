@@ -105,9 +105,6 @@ function RFUpdateState(new_es, prev_es, xs,
 end
 
 function process_retained!(state::RFUpdateState{K}) where {K}
-    @show size(state.prev_atable)
-    @show size(state.new_atable)
-    @show state.to_revise
     ne, nx = size(state.new_atable)
     to_revise = state.to_revise
     @inbounds for key in collect(keys(state.partitions))   # collect before mutating

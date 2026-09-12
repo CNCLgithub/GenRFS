@@ -64,6 +64,6 @@ using BenchmarkTools
             println("="^65 * "\n")
         end
 
-        benchmark_scaling([2, 4, 8, 10], 4)
+        benchmark_scaling([2, 4, 8, 10], 6)
     end
 end
