@@ -152,7 +152,7 @@ function ins_kernel(partition::BitMatrix,
                     l_table::Matrix{Float64},
                     c_table::Matrix{Float64})
     (ne, nx) = size(l_table)
-    k_ins = fill(-Inf, (nx, ne))
+    k_ins = zeros((nx, ne))
     ins_kernel!(k_ins, partition, l_table, c_table)
     return k_ins
 end
@@ -216,7 +216,7 @@ function swap_kernel!(k_swap::Vector{Float64},
             ej = unsafe_find_true(partition[b, :])
             if ei == ej
                 # can't swap when assigned to same element
-                k_swap[i] = -Inf
+                k_swap[i] = 0.0
                 continue
             end
             lbej = l_table[ej, b]
