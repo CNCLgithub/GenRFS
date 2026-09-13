@@ -79,6 +79,7 @@ function mcmc_tree_step!(st::RTWState, t::Float64=1.0, p_swap::Float64=0.5)::Not
     else
         # Gibbs move, reassigning x_i from e_j to e_k
         gibbs_insert!(st, t)
+        # biased_insert!(st, t)
     end
     return nothing
 end
@@ -93,17 +94,62 @@ function gibbs_insert!(st::RTWState, t::Float64)::Nothing
     @inbounds for j = 1:size(st.rowbuf, 1)
         st.rowbuf[j] = st.k_ins[x, j]            # RAW deltas, no exp
     end
-    # st.rowbuf[ei] = 0.0                          # self-entry
     ej = unsafe_categorical!(st.rowbuf, t)       # sampler does temp + exp + normalize
-    # @show st.k_ins[x, :]
-    # @show st.rowbuf
-    # @show ej
-    if ej !== ei && ej !== 0
-        partition_insert_move!(st, x, ei, ej)
-        update_after_insert!(st, x, ei, ej)
-    end
+
+    ej == 0 && error("Enable to random walk insert")
+    ej == ei && return
+
+    st.partition[x, ei] = false
+    st.partition[x, ej] = true
+    st.assigned[x] = ej
+    st.pscore += st.k_ins[x, ej]
+
+    refresh_k_ins_cols!(st, x, ei, ej)   # O(2*nx + ne)
+    refresh_k_ins_row!(st, x) 
+    refresh_k_swp_pairs!(st, x)          # O(nx): pairs involving x
+    idx = partition_to_tuple(st.partition)
+    # println("Score after insert: $(st.pscore)")
+    haskey(st.visited, idx) || (st.visited[idx] = st.pscore)
+    # update_after_insert!(st, x, ei, ej)
     return nothing
 end
+
+function biased_insert!(st::RTWState, t::Float64 = 1.0)::Nothing
+    nx, ne = size(st.partition)
+    x  = rand(1:nx)
+    ei = st.assigned[x]
+    ci = count_idx(st.partition, ei)
+
+    # O(ne) proposal weights: numerator terms only, tempered
+    @inbounds for e = 1:ne
+        if e == ei
+            st.rowbuf[e] = 0.0
+            continue
+        end
+        cj  = count_idx(st.partition, e)
+        delta = (st.ml[e, x] + st.mc[e, cj + 1] + st.mc[ei, ci - 1]) -
+            (st.ml[ei, x] + st.mc[ei, ci]     + st.mc[e, cj])
+        st.rowbuf[e] = delta
+    end
+    ej = unsafe_categorical!(st.rowbuf, 1.0)
+
+    ej === ei || ej === 0 && return nothing   # stay: no state change
+
+    cj  = count_idx(st.partition, ej)
+    Δ   = (st.ml[ej, x] + st.mc[ej, cj + 1] + st.mc[ei, ci - 1]) -
+          (st.ml[ei, x] + st.mc[ei, ci]     + st.mc[ej, cj])
+
+    # partition_insert_move!(st, x, ei, ej)
+    st.partition[x, ei] = false
+    st.partition[x, ej] = true
+    st.assigned[x] = ej
+    st.pscore += Δ                              # exact, incremental
+
+    key = partition_to_tuple(st.partition)
+    haskey(st.visited, key) || (st.visited[key] = st.pscore)
+    return nothing
+end
+
 
 "One Metropolis swap step: uniform proposal over all pairs (state-independent q)."
 function metro_swap!(st::RTWState, t::Float64)::Nothing

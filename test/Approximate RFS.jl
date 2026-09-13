@@ -23,7 +23,7 @@ import GenRFS
     # Approximate MRFS logpdf
     steps_short = 50
     steps_long = 1000
-    temp = 1.0
+    temp = 0.1
 
     approx_short = Gen.logpdf(mrfs_float64, xs, es, steps_short, temp)
     approx_long  = Gen.logpdf(mrfs_float64, xs, es, steps_long, temp)
@@ -58,7 +58,7 @@ end
 @testset "MRFS vs RFS" begin
     rfs = RFS{Float64}()
     mrfs = MRFS{Float64}()
-    temp = 1.0
+    temp = 0.1
 
     @testset "two separated clusters (singles + ensembles)" begin
         es = [
