@@ -6,8 +6,9 @@ struct RFSTrace{T} <: Gen.Trace
     choices::ChoiceMap
     retval::PersistentVector{T}
     score::Float64
-    partitions::Dict{PartitionKey, Float64}
+    partitions::PartitionTable
 end
+
 
 @inline Gen.get_args(trace::RFSTrace) = trace.args
 @inline Gen.get_retval(trace::RFSTrace) = trace.retval
@@ -46,14 +47,15 @@ end
 function RFSTrace(gen_fn::RFGM{T}, es, xs) where {T}
     visited = associations(gen_fn.estimator, es, xs,
                            gen_fn.estimator_args...)
-    weight = logsumexp_collection(values(visited))
+    partition_table = PartitionTable(visited)
+    weight = logsumexp_collection(values(partition_table))
     nx = length(xs)
     choices = choicemap()
     @inbounds for i = 1:nx
         choices[i] = xs[i]
     end
     RFSTrace{T}(gen_fn, (es,), choices, PersistentVector{T}(xs),
-                   weight, visited)
+                   weight, partition_table)
 end
 
 function Gen.simulate(gen_fn::RFGM{T}, args::Tuple) where {T}
@@ -87,7 +89,7 @@ mutable struct RFUpdateState
     new_ctable::Matrix{Float64}
     prev_atable::Matrix{Float64}
     prev_ctable::Matrix{Float64}
-    partitions::Dict{PartitionKey, Float64}
+    partitions::PartitionTable
     to_revise::Vector{Int64}
 end
 
@@ -106,15 +108,18 @@ function RFUpdateState(prev_trace::RFSTrace{T},
     prev_ctable = cardinality_table(prev_es_r, nx)
     new_atable = support_table(new_es_r, xs)
     new_ctable = cardinality_table(new_es_r, nx)
+    # Added to prevent mutation of prev trace
+    # Probably incurs memory overhead
+    # new_partitions = copy(prev_trace.partitions)
+    new_partitions = retained_copy(prev_trace.partitions)
     RFUpdateState(new_atable, new_ctable, prev_atable, prev_ctable,
-                  prev_trace.partitions, to_revise)
+                  new_partitions, to_revise)
 end
 
 function process_retained!(state::RFUpdateState)
     nrev, nx = size(state.new_atable)
     to_revise = state.to_revise
-    @inbounds for key in collect(keys(state.partitions))   # collect before mutating
-        weight = state.partitions[key]
+    @inbounds for (i, (key, weight)) = enumerate(state.partitions)
         for j = 1:nrev
             g = to_revise[j]                # global element index
             c = 1                           # c = 1 denotes card-0, as before
@@ -127,7 +132,7 @@ function process_retained!(state::RFUpdateState)
             weight += (state.new_ctable[j, c] -
                        state.prev_ctable[j, c])
         end
-        state.partitions[key] = weight
+        state.partitions.values[i] = weight
     end
     return nothing
 end
